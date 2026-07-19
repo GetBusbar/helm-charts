@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.1
+
+Fixes found by deploying the chart to a live (kind) cluster — none were catchable by
+`helm lint`/`helm template`:
+
+- **Config mount no longer shadows the image's provider catalog.** The ConfigMap was
+  mounted over the whole `/etc/busbar` directory, hiding the built-in
+  `/etc/busbar/providers.yaml` and crash-looping the pod. Now `config.yaml` (and
+  `providers.yaml` only when `providersCatalog` is set) mount as individual files via
+  `subPath`.
+- **Governance now wires an admin token.** busbar refuses to boot with governance
+  enabled but no `admin_token`. The chart renders `governance.admin_token: ${<env>}`
+  from the new `governance.adminTokenEnv` (default `BUSBAR_ADMIN_TOKEN`), and a
+  render-time guard fails `helm install` fast if the token isn't provided.
+- **Governance keeps a normal data Service.** The data (traffic) Service is no longer
+  made headless for the StatefulSet — a separate headless Service provides stable pod
+  identity. This keeps the traffic-plane cluster VIP and lets a release switch
+  governance on/off without hitting Service `clusterIP` immutability.
+
 ## 0.1.0
 
 Initial release of the busbar Helm chart.

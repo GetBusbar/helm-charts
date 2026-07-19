@@ -10,9 +10,6 @@ metadata:
   {{- end }}
 spec:
   type: {{ .Values.service.data.type }}
-  {{- if .Values.governance.enabled }}
-  clusterIP: None
-  {{- end }}
   selector:
     {{- include "busbar.selectorLabels" . | nindent 4 }}
   ports:

@@ -1,0 +1,24 @@
+{{- if .Values.governance.enabled }}
+{{- /*
+  A headless Service that gives the governance StatefulSet stable per-pod network
+  identity (its `serviceName`). The public data Service stays a normal Service with
+  a cluster VIP for LLM traffic — the two are kept separate so switching governance
+  on/off never mutates the (immutable) clusterIP of the traffic Service.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "busbar.fullname" . }}-headless
+  labels:
+    {{- include "busbar.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "busbar.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: data
+      port: {{ .Values.service.data.port }}
+      targetPort: data
+      protocol: TCP
+{{- end }}

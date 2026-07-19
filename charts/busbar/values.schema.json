@@ -54,6 +54,7 @@
       "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean" },
+        "adminTokenEnv": { "type": "string", "minLength": 1 },
         "dbPath": { "type": "string", "minLength": 1 },
         "persistence": {
           "type": "object",

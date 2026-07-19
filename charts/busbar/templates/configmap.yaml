@@ -1,4 +1,5 @@
 {{- include "busbar.validateAdmin" . -}}
+{{- include "busbar.validateGovernance" . -}}
 {{- if not .Values.existingConfigMap -}}
 apiVersion: v1
 kind: ConfigMap
@@ -31,6 +32,7 @@ data:
     governance:
       enabled: true
       db_path: {{ .Values.governance.dbPath | quote }}
+      admin_token: ${{ printf "{%s}" .Values.governance.adminTokenEnv }}
     {{- end }}
     {{- with .Values.config }}
     {{- toYaml . | nindent 4 }}

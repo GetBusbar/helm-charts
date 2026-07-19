@@ -9,7 +9,7 @@ spec:
   # Governance owns a single-writer SQLite DB per replica; horizontal scale of a
   # shared store is unsupported. replicas is pinned to 1.
   replicas: 1
-  serviceName: {{ include "busbar.fullname" . }}-data
+  serviceName: {{ include "busbar.fullname" . }}-headless
   selector:
     matchLabels:
       {{- include "busbar.selectorLabels" . | nindent 6 }}

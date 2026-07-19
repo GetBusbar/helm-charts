@@ -80,9 +80,19 @@ spec:
       resources:
         {{- toYaml .Values.resources | nindent 8 }}
       volumeMounts:
+        # Mount config.yaml (and providers.yaml only when overridden) as individual
+        # files via subPath, NOT the whole /etc/busbar dir — a directory mount would
+        # shadow the provider catalog baked into the image at /etc/busbar/providers.yaml.
         - name: config
-          mountPath: /etc/busbar
+          mountPath: /etc/busbar/config.yaml
+          subPath: config.yaml
           readOnly: true
+        {{- if .Values.providersCatalog }}
+        - name: config
+          mountPath: /etc/busbar/providers.yaml
+          subPath: providers.yaml
+          readOnly: true
+        {{- end }}
         - name: tmp
           mountPath: /tmp
         {{- if .Values.adminTLS.enabled }}

@@ -79,6 +79,10 @@ config:
 
 ### With governance
 
+Governance requires an admin token — put it in `secrets.data` under the key named by
+`governance.adminTokenEnv` (default `BUSBAR_ADMIN_TOKEN`); the chart wires
+`governance.admin_token` for you. (`helm install` fails fast if it is missing.)
+
 ```yaml
 governance:
   enabled: true
@@ -89,9 +93,6 @@ governance:
 secrets:
   data:
     BUSBAR_ADMIN_TOKEN: super-secret-admin-token
-config:
-  governance:
-    admin_token: ${BUSBAR_ADMIN_TOKEN}
 ```
 
 ### With ingress (data plane)

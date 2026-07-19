@@ -130,6 +130,11 @@ governance:
   # workload to a StatefulSet with a PVC and replicas=1. Horizontal scale of a
   # shared SQLite governance store is NOT supported.
   enabled: false
+  # -- Name of the environment variable (injected from the Secret) that holds the
+  # admin token. busbar REQUIRES an admin token when governance is enabled, or it
+  # refuses to boot. Put the token in `secrets.data` (or an existingSecret) under
+  # this key; the chart renders `governance.admin_token: ${<this>}` for you.
+  adminTokenEnv: BUSBAR_ADMIN_TOKEN
   # -- Path of the governance SQLite DB inside the PVC-backed volume.
   dbPath: /var/lib/busbar/governance.db
   persistence:
