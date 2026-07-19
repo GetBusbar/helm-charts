@@ -1,5 +1,7 @@
 # busbar
 
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/busbar-helm-charts)](https://artifacthub.io/packages/search?repo=busbar-helm-charts)
+
 A production-grade Helm chart for [busbar](https://getbusbar.com), a Rust LLM gateway.
 
 busbar runs **two listeners**:
