@@ -1,0 +1,17 @@
+{{- if not .Values.governance.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "busbar.fullname" . }}
+  labels:
+    {{- include "busbar.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "busbar.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "busbar.podSpec" . | nindent 4 }}
+{{- end }}

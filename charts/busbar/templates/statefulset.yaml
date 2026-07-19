@@ -1,0 +1,32 @@
+{{- if .Values.governance.enabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "busbar.fullname" . }}
+  labels:
+    {{- include "busbar.labels" . | nindent 4 }}
+spec:
+  # Governance owns a single-writer SQLite DB per replica; horizontal scale of a
+  # shared store is unsupported. replicas is pinned to 1.
+  replicas: 1
+  serviceName: {{ include "busbar.fullname" . }}-data
+  selector:
+    matchLabels:
+      {{- include "busbar.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "busbar.podSpec" . | nindent 4 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: governance-data
+        labels:
+          {{- include "busbar.labels" . | nindent 10 }}
+      spec:
+        accessModes:
+          - {{ .Values.governance.persistence.accessMode }}
+        {{- if .Values.governance.persistence.storageClass }}
+        storageClassName: {{ .Values.governance.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.governance.persistence.size }}
+{{- end }}

@@ -1,0 +1,231 @@
+# Default values for busbar.
+# This is a YAML-formatted file.
+# Every value below is documented. The defaults render a secure, BOOTABLE
+# deployment: the admin plane stays on loopback (127.0.0.1:8081) and is NOT
+# exposed as a Service, so the gateway always satisfies its admin boot-guard.
+# To expose the admin plane you MUST also enable mTLS (adminTLS.enabled) or
+# set adminInsecure=true, or the chart will refuse to render.
+
+# -- Container image settings.
+image:
+  # -- Image repository (Docker Hub).
+  repository: getbusbar/busbar
+  # -- Image tag. When empty, defaults to the chart's appVersion ("1.4.0").
+  tag: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets for private registries.
+# e.g. [{name: my-regcred}]
+imagePullSecrets: []
+
+# -- Override the chart name portion of resource names.
+nameOverride: ""
+# -- Override the full generated resource name.
+fullnameOverride: ""
+
+# -- Number of replicas (stateless / no-governance mode only).
+# Ignored when governance.enabled=true (governance forces a StatefulSet with
+# replicas=1 because busbar owns a single-writer SQLite DB per replica).
+replicaCount: 1
+
+serviceAccount:
+  # -- Create a ServiceAccount.
+  create: true
+  # -- Name of the ServiceAccount. Generated from the fullname when empty.
+  name: ""
+  # -- Annotations to add to the ServiceAccount.
+  annotations: {}
+
+# -- Annotations for the pod.
+podAnnotations: {}
+
+# -- Pod-level security context.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container-level security context (hardened by default).
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Resource requests and limits.
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: "1"
+    memory: 256Mi
+
+# -- Node selector for pod scheduling.
+nodeSelector: {}
+# -- Tolerations for pod scheduling.
+tolerations: []
+# -- Affinity rules for pod scheduling.
+affinity: {}
+
+# -- The busbar deploy config (config.yaml). Rendered into a ConfigMap and
+# mounted at /etc/busbar/config.yaml (env BUSBAR_CONFIG). The chart ALWAYS
+# injects `listen` (data plane) and `admin_listen` (admin plane) into this
+# map, so do not set them here — they are managed by the chart from the
+# listener wiring below. Use ${VAR} interpolation for secrets; the referenced
+# env vars are injected from the Secret (see secrets.data).
+#
+# Example (a minimal bootable config supplying one provider + one client token):
+#   config:
+#     auth:
+#       chain: ["client-tokens"]
+#       client_tokens: ["${BUSBAR_CLIENT_TOKEN}"]
+#     providers:
+#       openai:
+#         api_key_env: OPENAI_API_KEY
+#     models:
+#       gpt-4o:
+#         provider: openai
+#         max_concurrent: 8
+config: {}
+
+# -- The provider catalog (providers.yaml). OPTIONAL. A provider catalog
+# SHIPS INSIDE THE IMAGE at /etc/busbar/providers.yaml. Only set this to
+# OVERRIDE the built-in catalog; when empty, the image's catalog is used and
+# no providers.yaml is mounted (the built-in file is never blanked).
+providersCatalog: {}
+
+# -- Use an existing ConfigMap instead of rendering config from `config` /
+# `providersCatalog`. When set, the chart mounts this ConfigMap at
+# /etc/busbar and renders no ConfigMap of its own. The ConfigMap must
+# contain a `config.yaml` key (and optionally `providers.yaml`).
+existingConfigMap: ""
+
+secrets:
+  # -- Create a Secret from `secrets.data` and inject it as env vars.
+  create: true
+  # -- Use an existing Secret (its keys are injected as env vars via envFrom).
+  # When set, `secrets.data` is ignored and no Secret is rendered.
+  existingSecret: ""
+  # -- Key/value secret data injected as environment variables and referenced
+  # from config via ${VAR}. Provider API keys, auth.client_tokens and
+  # governance.admin_token belong here.
+  # e.g.
+  #   data:
+  #     OPENAI_API_KEY: sk-...
+  #     BUSBAR_CLIENT_TOKEN: my-client-token
+  data: {}
+
+governance:
+  # -- Enable governance (per-replica single-writer SQLite DB). Switches the
+  # workload to a StatefulSet with a PVC and replicas=1. Horizontal scale of a
+  # shared SQLite governance store is NOT supported.
+  enabled: false
+  # -- Path of the governance SQLite DB inside the PVC-backed volume.
+  dbPath: /var/lib/busbar/governance.db
+  persistence:
+    # -- Size of the governance PVC.
+    size: 1Gi
+    # -- StorageClass for the governance PVC (empty = cluster default).
+    storageClass: ""
+    # -- Access mode for the governance PVC.
+    accessMode: ReadWriteOnce
+
+service:
+  data:
+    # -- Data plane Service type.
+    type: ClusterIP
+    # -- Data plane Service port (maps to container 8080).
+    port: 8080
+    # -- Data plane Service annotations.
+    annotations: {}
+  admin:
+    # -- Expose the admin plane via a Service. DEFAULT false: the admin plane
+    # stays on loopback and the gateway always boots. Setting this true REQUIRES
+    # adminTLS.enabled=true or adminInsecure=true (the chart enforces this and
+    # binds admin_listen to 0.0.0.0:8081 so it is reachable in-cluster).
+    enabled: false
+    # -- Admin Service type (always cluster-internal).
+    type: ClusterIP
+    # -- Admin Service port (maps to container 8081).
+    port: 8081
+
+adminTLS:
+  # -- Terminate mTLS on the admin listener. Satisfies the non-loopback admin
+  # boot-guard. Required (unless adminInsecure) when service.admin.enabled=true.
+  enabled: false
+  certManager:
+    # -- Have cert-manager issue the admin server cert via a Certificate.
+    enabled: false
+    issuerRef:
+      # -- Name of the cert-manager Issuer/ClusterIssuer.
+      name: ""
+      # -- Kind of the issuer (Issuer or ClusterIssuer).
+      kind: Issuer
+  # -- Existing Secret holding the admin server cert (tls.crt/tls.key). Used
+  # when certManager.enabled=false. Mounted at /etc/busbar/tls/admin.
+  existingSecret: ""
+  # -- Secret holding the client CA bundle (ca.crt) that admin clients must
+  # chain to (mTLS). Mounted at /etc/busbar/tls/admin-ca.
+  clientCASecret: ""
+
+# -- Explicit boot-guard waiver: bind a non-loopback admin listener WITHOUT
+# mTLS. Insecure; use only in trusted, network-policied environments.
+adminInsecure: false
+
+dataTLS:
+  # -- Terminate TLS on the data listener (busbar-native TLS, not Ingress).
+  enabled: false
+  # -- Existing Secret holding the data TLS cert (tls.crt/tls.key). Mounted at
+  # /etc/busbar/tls/data.
+  existingSecret: ""
+
+ingress:
+  # -- Create an Ingress for the data plane.
+  enabled: false
+  # -- IngressClass name.
+  className: ""
+  # -- Ingress annotations.
+  annotations: {}
+  # -- Ingress hosts. e.g. [{host: gw.example.com, paths: [{path: /, pathType: Prefix}]}]
+  hosts: []
+  # -- Ingress TLS config. e.g. [{secretName: gw-tls, hosts: [gw.example.com]}]
+  tls: []
+
+networkPolicy:
+  # -- Create a NetworkPolicy restricting admin Service ingress.
+  enabled: false
+  admin:
+    # -- Namespaces allowed to reach the admin plane (matched by the
+    # `kubernetes.io/metadata.name` label).
+    allowedNamespaces: []
+
+autoscaling:
+  # -- Enable an HPA for the data Deployment. Ignored when governance.enabled
+  # (the governance StatefulSet is single-writer and cannot scale out).
+  enabled: false
+  # -- Minimum replicas.
+  minReplicas: 1
+  # -- Maximum replicas.
+  maxReplicas: 5
+  # -- Target average CPU utilization.
+  targetCPUUtilizationPercentage: 80
+
+podDisruptionBudget:
+  # -- Create a PodDisruptionBudget.
+  enabled: false
+  # -- Minimum available pods during disruption.
+  minAvailable: 1
+
+# -- Restart pods on ConfigMap/Secret change via a checksum annotation. When
+# false, changing config requires a manual rollout (or a POST /config/reload).
+reloadOnConfigChange: true

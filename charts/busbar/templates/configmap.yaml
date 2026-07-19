@@ -1,0 +1,42 @@
+{{- include "busbar.validateAdmin" . -}}
+{{- if not .Values.existingConfigMap -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "busbar.fullname" . }}
+  labels:
+    {{- include "busbar.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- /* Chart-managed listeners: never taken from .Values.config */}}
+    listen: "0.0.0.0:8080"
+    admin_listen: "{{ include "busbar.adminListen" . }}"
+    {{- if .Values.adminInsecure }}
+    admin_insecure: true
+    {{- end }}
+    {{- if .Values.adminTLS.enabled }}
+    admin_tls:
+      cert_file: /etc/busbar/tls/admin/tls.crt
+      key_file: /etc/busbar/tls/admin/tls.key
+      {{- if .Values.adminTLS.clientCASecret }}
+      client_ca_file: /etc/busbar/tls/admin-ca/ca.crt
+      {{- end }}
+    {{- end }}
+    {{- if .Values.dataTLS.enabled }}
+    tls:
+      cert_file: /etc/busbar/tls/data/tls.crt
+      key_file: /etc/busbar/tls/data/tls.key
+    {{- end }}
+    {{- if .Values.governance.enabled }}
+    governance:
+      enabled: true
+      db_path: {{ .Values.governance.dbPath | quote }}
+    {{- end }}
+    {{- with .Values.config }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.providersCatalog }}
+  providers.yaml: |
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

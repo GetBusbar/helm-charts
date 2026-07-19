@@ -1,0 +1,42 @@
+apiVersion: v2
+name: busbar
+description: A production-grade Helm chart for busbar, a Rust LLM gateway with a data plane and a separate, loopback-by-default, mTLS-gated admin plane.
+type: application
+version: 0.1.0
+appVersion: "1.4.0"
+kubeVersion: ">=1.24.0-0"
+home: https://getbusbar.com
+icon: https://getbusbar.com/icon.png
+keywords:
+  - llm
+  - gateway
+  - proxy
+  - ai
+  - openai
+  - anthropic
+  - rust
+  - governance
+sources:
+  - https://github.com/MattJackson/busbarAI
+  - https://github.com/GetBusbar/helm-charts
+maintainers:
+  - name: Busbar Maintainers
+    email: support@getbusbar.com
+    url: https://getbusbar.com
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Homepage
+      url: https://getbusbar.com
+    - name: Source
+      url: https://github.com/MattJackson/busbarAI
+    - name: Chart Source
+      url: https://github.com/GetBusbar/helm-charts
+    - name: Support
+      url: https://github.com/GetBusbar/helm-charts/issues
+  artifacthub.io/images: |
+    - name: busbar
+      image: getbusbar/busbar:1.4.0
+  artifacthub.io/maintainers: |
+    - name: Busbar Maintainers
+      email: support@getbusbar.com

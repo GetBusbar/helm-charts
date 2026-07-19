@@ -1,0 +1,28 @@
+{{- if and .Values.adminTLS.enabled .Values.adminTLS.certManager.enabled -}}
+{{- if not (.Capabilities.APIVersions.Has "cert-manager.io/v1") }}
+{{- fail "adminTLS.certManager.enabled=true requires the cert-manager.io/v1 API (cert-manager must be installed in the cluster)." }}
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "busbar.fullname" . }}-admin
+  labels:
+    {{- include "busbar.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "busbar.fullname" . }}-admin-tls
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - server auth
+  dnsNames:
+    - {{ include "busbar.fullname" . }}-admin
+    - {{ include "busbar.fullname" . }}-admin.{{ .Release.Namespace }}.svc
+    - {{ include "busbar.fullname" . }}-admin.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    name: {{ required "adminTLS.certManager.issuerRef.name is required when certManager is enabled" .Values.adminTLS.certManager.issuerRef.name }}
+    kind: {{ .Values.adminTLS.certManager.issuerRef.kind }}
+    group: cert-manager.io
+{{- end }}

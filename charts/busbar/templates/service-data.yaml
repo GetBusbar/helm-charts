@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "busbar.fullname" . }}-data
+  labels:
+    {{- include "busbar.labels" . | nindent 4 }}
+  {{- with .Values.service.data.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.data.type }}
+  {{- if .Values.governance.enabled }}
+  clusterIP: None
+  {{- end }}
+  selector:
+    {{- include "busbar.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: data
+      port: {{ .Values.service.data.port }}
+      targetPort: data
+      protocol: TCP

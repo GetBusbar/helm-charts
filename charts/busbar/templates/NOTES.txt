@@ -1,0 +1,62 @@
+busbar {{ .Chart.AppVersion }} has been deployed as release "{{ .Release.Name }}".
+
+WORKLOAD
+--------
+{{- if .Values.governance.enabled }}
+  Governance is ENABLED -> a StatefulSet with a PVC and replicas=1.
+  busbar owns a single-writer SQLite DB at {{ .Values.governance.dbPath }}.
+  Horizontal scale of a shared SQLite governance store is NOT supported.
+{{- else }}
+  Stateless mode -> a Deployment{{ if .Values.autoscaling.enabled }} with an HPA ({{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} replicas){{ else }} with {{ .Values.replicaCount }} replica(s){{ end }}.
+{{- end }}
+
+DATA PLANE (public LLM proxy, port 8080)
+----------------------------------------
+  Service: {{ include "busbar.fullname" . }}-data ({{ .Values.service.data.type }}) on port {{ .Values.service.data.port }}
+
+  Reach it from inside the cluster:
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "busbar.fullname" . }}-data {{ .Values.service.data.port }}:{{ .Values.service.data.port }}
+    curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/healthz    # unauthenticated health
+    curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/metrics     # Prometheus metrics
+    curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/stats       # runtime stats
+
+{{- if .Values.ingress.enabled }}
+
+  Ingress hosts:
+  {{- range .Values.ingress.hosts }}
+    - http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+  {{- end }}
+{{- end }}
+
+ADMIN PLANE (port 8081)
+-----------------------
+{{- if .Values.service.admin.enabled }}
+  The admin plane is EXPOSED via Service {{ include "busbar.fullname" . }}-admin (bound 0.0.0.0:8081).
+  {{- if .Values.adminTLS.enabled }}
+  It requires mTLS. Present a client cert chaining to your client CA and an
+  admin token (x-admin-token / Bearer) to reach /api/v1/admin/*.
+  {{- else if .Values.adminInsecure }}
+  WARNING: admin_insecure=true -> the admin plane accepts plaintext admin
+  traffic with NO mTLS. Restrict it with a NetworkPolicy (networkPolicy.enabled).
+  {{- end }}
+
+  Health probe (unauthenticated, bypasses auth on the admin port too):
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "busbar.fullname" . }}-admin 8081:8081
+    curl http{{ if .Values.adminTLS.enabled }}s{{ end }}://127.0.0.1:8081/healthz
+{{- else }}
+  The admin plane is NOT exposed. It stays on loopback (127.0.0.1:8081) inside
+  the pod, so the gateway always satisfies its admin boot-guard and boots.
+
+  To administer the gateway, port-forward into the pod's loopback:
+    kubectl -n {{ .Release.Namespace }} exec -it deploy/{{ include "busbar.fullname" . }} -- \
+      curl http://127.0.0.1:8081/healthz
+
+  To EXPOSE the admin plane cluster-wide, set service.admin.enabled=true. Because
+  busbar refuses to boot with a non-loopback admin listener that lacks mTLS, you
+  must ALSO enable one of:
+    --set adminTLS.enabled=true      (recommended: mTLS)
+    --set adminInsecure=true         (insecure waiver; pair with a NetworkPolicy)
+{{- end }}
+
+Run the bundled health test any time:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
