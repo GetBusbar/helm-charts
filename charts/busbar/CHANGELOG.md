@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+- Releases now carry a **Sigstore build-provenance attestation** on the chart `.tgz`,
+  verifiable with `gh attestation verify busbar-<version>.tgz --repo GetBusbar/helm-charts`.
+- Listed on [Artifact Hub](https://artifacthub.io/packages/search?repo=busbar-helm-charts).
+
 ## 0.1.2
 
 Found by testing the admin-mTLS path on a live (cert-manager) cluster:

@@ -1,5 +1,7 @@
 # busbar Helm charts
 
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/busbar-helm-charts)](https://artifacthub.io/packages/search?repo=busbar-helm-charts)
+
 The official Helm chart repository for [busbar](https://getbusbar.com), a Rust LLM gateway.
 
 ## Usage

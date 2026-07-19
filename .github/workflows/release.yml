@@ -8,6 +8,8 @@ on:
 permissions:
   contents: write
   pages: write
+  id-token: write      # OIDC identity for keyless Sigstore provenance
+  attestations: write  # record the build-provenance attestation
 
 jobs:
   release:
@@ -34,3 +36,24 @@ jobs:
           charts_dir: charts
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      # chart-releaser packages newly-versioned charts into .cr-release-packages and
+      # uploads each .tgz to its GitHub Release. Only attest when something was packaged
+      # (a no-op push leaves the dir empty; attesting nothing would fail the job).
+      - name: Detect packaged charts
+        id: pkg
+        run: |
+          if ls .cr-release-packages/*.tgz >/dev/null 2>&1; then
+            echo "packaged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no charts packaged this run; skipping attestation"
+          fi
+
+      # Keyless Sigstore build-provenance binding each chart .tgz digest to this workflow
+      # run + commit. A user verifies a downloaded chart with:
+      #   gh attestation verify busbar-<ver>.tgz --repo GetBusbar/helm-charts
+      - name: Attest chart provenance
+        if: steps.pkg.outputs.packaged == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ".cr-release-packages/*.tgz"
