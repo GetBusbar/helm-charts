@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.2
+
+Found by testing the admin-mTLS path on a live (cert-manager) cluster:
+
+- **`adminTLS.enabled` now yields real mTLS.** busbar's boot-guard requires a client CA
+  (`client_ca_file`) on a network-exposed admin listener, not just a server cert — a
+  server-cert-only config crash-looped. The chart now wires `client_ca_file` from the
+  `ca.crt` that cert-manager writes into the server-cert Secret (clients present certs
+  signed by the same issuing CA), so `adminTLS.certManager.enabled=true` works out of the
+  box. An explicit `clientCASecret` still takes precedence.
+- **New guard:** `adminTLS.enabled` with an `existingSecret` but no `clientCASecret` (where
+  the chart can't derive a CA) now fails `helm install` with guidance instead of
+  crash-looping the pod.
+
 ## 0.1.1
 
 Fixes found by deploying the chart to a live (kind) cluster — none were catchable by

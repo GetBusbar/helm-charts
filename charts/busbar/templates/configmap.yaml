@@ -19,8 +19,14 @@ data:
     admin_tls:
       cert_file: /etc/busbar/tls/admin/tls.crt
       key_file: /etc/busbar/tls/admin/tls.key
+      {{- /* busbar's boot-guard requires client_ca_file (real mTLS), not just server TLS.
+             With an explicit client CA, use it. Otherwise fall back to the ca.crt that
+             cert-manager writes into the server-cert Secret (the issuing CA) so mTLS works
+             out of the box: admin clients present certs signed by that same CA. */}}
       {{- if .Values.adminTLS.clientCASecret }}
       client_ca_file: /etc/busbar/tls/admin-ca/ca.crt
+      {{- else if .Values.adminTLS.certManager.enabled }}
+      client_ca_file: /etc/busbar/tls/admin/ca.crt
       {{- end }}
     {{- end }}
     {{- if .Values.dataTLS.enabled }}
