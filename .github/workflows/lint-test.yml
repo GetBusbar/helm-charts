@@ -43,6 +43,41 @@ jobs:
         if: steps.list-changed.outputs.changed == 'true'
         uses: helm/kind-action@v1.12.0
 
+      # cert-manager + a CA ClusterIssuer named "busbar-ca" so the ci/admin-mtls
+      # install test can exercise the exposed-admin-plane mTLS path end to end.
+      - name: Install cert-manager
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+          kubectl -n cert-manager wait --for=condition=Available deploy --all --timeout=300s
+
+      - name: Create the busbar-ca ClusterIssuer
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          kubectl apply -f - <<'EOF'
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata: { name: selfsigned }
+          spec: { selfSigned: {} }
+          ---
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata: { name: busbar-ca, namespace: cert-manager }
+          spec:
+            isCA: true
+            commonName: busbar-ca
+            secretName: busbar-ca
+            privateKey: { algorithm: ECDSA, size: 256 }
+            issuerRef: { name: selfsigned, kind: ClusterIssuer, group: cert-manager.io }
+          ---
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata: { name: busbar-ca }
+          spec:
+            ca: { secretName: busbar-ca }
+          EOF
+          kubectl -n cert-manager wait --for=condition=Ready certificate/busbar-ca --timeout=120s
+
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct install --target-branch main

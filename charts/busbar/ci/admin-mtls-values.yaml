@@ -1,0 +1,25 @@
+# CI: exposed admin plane with cert-manager mTLS. Requires cert-manager + a
+# ClusterIssuer named "busbar-ca" in the cluster (the workflow installs both).
+config:
+  providers:
+    anthropic:
+      api_key_env: ANTHROPIC_KEY
+  models:
+    claude-sonnet:
+      provider: anthropic
+      max_concurrent: 20
+      max_requests: -1
+secrets:
+  create: true
+  data:
+    ANTHROPIC_KEY: ci-dummy-anthropic-key
+service:
+  admin:
+    enabled: true
+adminTLS:
+  enabled: true
+  certManager:
+    enabled: true
+    issuerRef:
+      name: busbar-ca
+      kind: ClusterIssuer
