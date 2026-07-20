@@ -17,7 +17,7 @@ keywords:
   - rust
   - governance
 sources:
-  - https://github.com/MattJackson/busbarAI
+  - https://github.com/GetBusbar/busbar
   - https://github.com/GetBusbar/helm-charts
 maintainers:
   - name: Busbar Maintainers
@@ -29,7 +29,7 @@ annotations:
     - name: Homepage
       url: https://getbusbar.com
     - name: Source
-      url: https://github.com/MattJackson/busbarAI
+      url: https://github.com/GetBusbar/busbar
     - name: Chart Source
       url: https://github.com/GetBusbar/helm-charts
     - name: Support
