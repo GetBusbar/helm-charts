@@ -99,17 +99,18 @@ clear message so the user never ships an un-bootable deployment.
 {{- end }}
 
 {{/*
-Governance boot-guard: busbar refuses to boot with governance enabled but no
-admin_token. The chart renders `admin_token: ${<adminTokenEnv>}`, so that env
-var must be supplied. When the chart renders the Secret (secrets.create) we can
-check it here and fail fast; with an existingSecret we can't introspect, so we
-trust the operator.
+Governance boot-guard: with governance enabled the chart renders
+`auth.admin_auth: [admin-tokens: {token: {env: <adminTokenEnv>}}]`, so that env
+var must be supplied or busbar's admin plane authenticates nothing (fail-closed
+on every admin call, including the ones this chart's own probes rely on). When
+the chart renders the Secret (secrets.create) we can check it here and fail
+fast; with an existingSecret we can't introspect, so we trust the operator.
 */}}
 {{- define "busbar.validateGovernance" -}}
 {{- if .Values.governance.enabled -}}
 {{- if not .Values.secrets.existingSecret -}}
 {{- if not (hasKey (default dict .Values.secrets.data) .Values.governance.adminTokenEnv) -}}
-{{ fail (printf "\n\ngovernance.enabled=true requires an admin token, but secrets.data has no %q key — busbar refuses to boot without governance.admin_token.\n\nFix: add the token to the Secret, e.g.\n  --set secrets.data.%s=<a-long-random-token>\nor set governance.adminTokenEnv to a key you already provide (or use an existingSecret that contains it).\n" .Values.governance.adminTokenEnv .Values.governance.adminTokenEnv) }}
+{{ fail (printf "\n\ngovernance.enabled=true requires an admin token, but secrets.data has no %q key — busbar's auth.admin_auth (admin-tokens) resolves to an empty credential and locks out the admin plane.\n\nFix: add the token to the Secret, e.g.\n  --set secrets.data.%s=<a-long-random-token>\nor set governance.adminTokenEnv to a key you already provide (or use an existingSecret that contains it).\n" .Values.governance.adminTokenEnv .Values.governance.adminTokenEnv) }}
 {{- end -}}
 {{- end -}}
 {{- end -}}

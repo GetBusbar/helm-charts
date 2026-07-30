@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0
+
+busbar 1.5.0 config redesign — this chart now emits 1.5.0 config syntax:
+
+- `appVersion` bumped to `1.5.0`; a fresh `helm install` with no `image.tag` override now
+  pulls `getbusbar/busbar:1.5.0`.
+- `tls.cert_file`/`key_file` and `admin_tls.cert_file`/`key_file`/`client_ca_file` →
+  `cert: { file }` / `key: { file }` / `client_ca: { file }` secret references (1.5.0
+  removed the plaintext path fields).
+- `governance.enabled` now wires `auth.admin_auth: [admin-tokens: {token: {env:
+  <adminTokenEnv>}}]` instead of the removed `governance.admin_token`. **Caveat:** 1.5.0
+  moved durable key/usage storage behind a signed store plugin
+  (`busbar-store-sqlite`) loaded via `plugins.dir`; this chart does not yet fetch/mount
+  that plugin, so `governance.enabled` currently gives you the admin token + the
+  StatefulSet/PVC scaffold, but admin/key state is still in-memory (ephemeral) until
+  plugin support is added. Tracked as follow-up work.
+- Added `.github/workflows/bump-chart.yml`, mirroring `homebrew-busbar`'s bump-formula
+  workflow: polls `GetBusbar/busbar` releases daily (+ on-demand / `repository_dispatch`)
+  and auto-bumps `appVersion` + the chart `version`.
+
 ## 0.1.3
 
 - Releases now carry a **Sigstore build-provenance attestation** on the chart `.tgz`,
