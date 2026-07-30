@@ -22,22 +22,22 @@ helm install my-busbar busbar/busbar
 ```
 
 The defaults render a secure, bootable deployment: the admin plane stays on loopback and is not
-exposed, so the gateway always boots. Supply a provider key and a client token to make it useful:
+exposed, so the gateway always boots. Supply a provider key to make it useful:
 
 ```console
 helm install my-busbar busbar/busbar \
   --set-string secrets.data.OPENAI_API_KEY=sk-... \
-  --set-string secrets.data.BUSBAR_CLIENT_TOKEN=my-client-token \
-  --set 'config.auth.chain[0]=client-tokens' \
-  --set 'config.auth.client_tokens[0]=${BUSBAR_CLIENT_TOKEN}' \
-  --set config.providers.openai.api_key_env=OPENAI_API_KEY \
+  --set config.providers.openai.api_key.env=OPENAI_API_KEY \
   --set config.models.gpt-4o.provider=openai \
   --set config.models.gpt-4o.max_concurrent=8
 ```
 
 Secrets are injected as environment variables from a Kubernetes Secret and referenced from the
-config with `${VAR}` interpolation. The provider catalog ships inside the image at
-`/etc/busbar/providers.yaml`; only set `providersCatalog` to override it.
+config as a secret reference (`api_key: { env: VAR }` etc - see
+[the migration guide](https://getbusbar.com/docs/migration-1-5/) if porting an older config). The
+provider catalog ships inside the image at `/etc/busbar/providers.yaml`; only set
+`providersCatalog` to override it. Data-plane callers authenticate with a signed key minted over
+the Admin API (`auth.chain: [keys]`, the built-in default) rather than a static client token.
 
 ## Admin plane
 
@@ -52,10 +52,13 @@ If you enable the admin Service without either, the chart **fails the render** w
 
 ## Governance
 
-When `governance.enabled=true`, busbar owns a single-writer SQLite DB — per-replica state. The chart
-switches to a **StatefulSet with a PVC and `replicas: 1`**. **Horizontal scale of a shared SQLite
-governance store is not supported.** Stateless (no governance) deployments use a Deployment and may
-scale out (HPA supported).
+When `governance.enabled=true`, the chart wires up `auth.admin_auth` (the admin token) and
+switches to a **StatefulSet with a PVC and `replicas: 1`**. **Caveat:** busbar 1.5.0 moved durable
+key/usage storage behind a signed store plugin (`busbar-store-sqlite`, loaded via `plugins.dir`),
+and this chart does not yet fetch/mount that plugin tarball — so admin/key state is currently
+**in-memory (ephemeral)** even with `governance.enabled=true`; the PVC is scaffolding for when
+plugin support lands. Stateless (no governance) deployments use a Deployment and may scale out
+(HPA supported).
 
 ## Examples
 
@@ -65,14 +68,10 @@ scale out (HPA supported).
 secrets:
   data:
     OPENAI_API_KEY: sk-...
-    BUSBAR_CLIENT_TOKEN: my-client-token
 config:
-  auth:
-    chain: ["client-tokens"]
-    client_tokens: ["${BUSBAR_CLIENT_TOKEN}"]
   providers:
     openai:
-      api_key_env: OPENAI_API_KEY
+      api_key: { env: OPENAI_API_KEY }
   models:
     gpt-4o:
       provider: openai
@@ -83,7 +82,8 @@ config:
 
 Governance requires an admin token — put it in `secrets.data` under the key named by
 `governance.adminTokenEnv` (default `BUSBAR_ADMIN_TOKEN`); the chart wires
-`governance.admin_token` for you. (`helm install` fails fast if it is missing.)
+`auth.admin_auth: [admin-tokens: {token: {env: <that key>}}]` for you. (`helm install` fails fast
+if it is missing.)
 
 ```yaml
 governance:

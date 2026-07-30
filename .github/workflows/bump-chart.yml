@@ -1,0 +1,44 @@
+name: bump-chart
+
+# Keeps charts/busbar's appVersion current with zero human touch, mirroring
+# GetBusbar/homebrew-busbar's bump-formula workflow: daily (self-healing - a
+# missed run just catches up the next day), on-demand, and instantly on an
+# upstream release via repository_dispatch. Idempotent: no new busbar release
+# => no-op.
+on:
+  schedule:
+    - cron: "37 6 * * *"
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [upstream-release]   # optional instant trigger from a core release (needs a PAT)
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump charts/busbar's appVersion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CHART=charts/busbar/Chart.yaml
+          latest="$(gh release view --repo GetBusbar/busbar --json tagName -q .tagName)"
+          ver="${latest#v}"
+          cur="$(grep -E '^appVersion: ' "$CHART" | sed -E 's/appVersion: "([^"]+)"/\1/')"
+          echo "busbar chart appVersion current=$cur latest=$ver"
+          if [ "$ver" = "$cur" ]; then echo "chart already current"; exit 0; fi
+          python3 .github/scripts/bump_chart.py "$CHART" "$ver"
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then echo "no changes"; exit 0; fi
+          git config user.name "busbar-bot"
+          git config user.email "bot@getbusbar.com"
+          git add charts/busbar/Chart.yaml
+          git commit -m "auto-bump charts/busbar appVersion to latest busbar release"
+          git push
