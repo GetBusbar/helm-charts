@@ -29,9 +29,10 @@ jobs:
           CHART=charts/busbar/Chart.yaml
           latest="$(gh release view --repo GetBusbar/busbar --json tagName -q .tagName)"
           ver="${latest#v}"
-          cur="$(grep -E '^appVersion: ' "$CHART" | sed -E 's/appVersion: "([^"]+)"/\1/')"
-          echo "busbar chart appVersion current=$cur latest=$ver"
-          if [ "$ver" = "$cur" ]; then echo "chart already current"; exit 0; fi
+          echo "busbar latest tagged release: $ver"
+          # bump_chart.py itself compares semver and only ever moves appVersion FORWARD - a
+          # chart intentionally bumped ahead of the latest tagged release (e.g. shipped for an
+          # in-progress config redesign before that release tagged) is never reverted here.
           python3 .github/scripts/bump_chart.py "$CHART" "$ver"
 
       - name: Commit and push
