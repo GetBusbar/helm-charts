@@ -20,6 +20,53 @@ entries:
           email: support@getbusbar.com
     apiVersion: v2
     appVersion: 1.5.0
+    created: "2026-07-30T20:40:41.878982028Z"
+    description: A production-grade Helm chart for busbar, a Rust LLM gateway with
+      a data plane and a separate, loopback-by-default, mTLS-gated admin plane.
+    digest: f82214e12ced6d7c0e1d4eba5700a4d70d0c53dfb30fd76bdd5cb162e039006e
+    home: https://getbusbar.com
+    icon: https://getbusbar.com/icon.png
+    keywords:
+    - llm
+    - gateway
+    - proxy
+    - ai
+    - openai
+    - anthropic
+    - rust
+    - governance
+    kubeVersion: '>=1.24.0-0'
+    maintainers:
+    - email: support@getbusbar.com
+      name: Busbar Maintainers
+      url: https://getbusbar.com
+    name: busbar
+    sources:
+    - https://github.com/GetBusbar/busbar
+    - https://github.com/GetBusbar/helm-charts
+    type: application
+    urls:
+    - https://github.com/GetBusbar/helm-charts/releases/download/busbar-0.2.2/busbar-0.2.2.tgz
+    version: 0.2.2
+  - annotations:
+      artifacthub.io/images: |
+        - name: busbar
+          image: getbusbar/busbar:1.5.0
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Homepage
+          url: https://getbusbar.com
+        - name: Source
+          url: https://github.com/GetBusbar/busbar
+        - name: Chart Source
+          url: https://github.com/GetBusbar/helm-charts
+        - name: Support
+          url: https://github.com/GetBusbar/helm-charts/issues
+      artifacthub.io/maintainers: |
+        - name: Busbar Maintainers
+          email: support@getbusbar.com
+    apiVersion: v2
+    appVersion: 1.5.0
     created: "2026-07-30T20:39:12.19462348Z"
     description: A production-grade Helm chart for busbar, a Rust LLM gateway with
       a data plane and a separate, loopback-by-default, mTLS-gated admin plane.
@@ -236,4 +283,4 @@ entries:
     urls:
     - https://github.com/GetBusbar/helm-charts/releases/download/busbar-0.1.0/busbar-0.1.0.tgz
     version: 0.1.0
-generated: "2026-07-30T20:39:12.194647355Z"
+generated: "2026-07-30T20:40:41.878995684Z"
