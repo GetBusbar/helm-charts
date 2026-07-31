@@ -84,18 +84,18 @@ affinity: {}
 # listener wiring below. Use ${VAR} interpolation for secrets; the referenced
 # env vars are injected from the Secret (see secrets.data).
 #
-# Example (a minimal bootable config supplying one provider):
+# Example (a minimal bootable config supplying one provider + one client token):
 #   config:
+#     auth:
+#       chain: ["client-tokens"]
+#       client_tokens: ["${BUSBAR_CLIENT_TOKEN}"]
 #     providers:
 #       openai:
-#         api_key: { env: OPENAI_API_KEY }
+#         api_key_env: OPENAI_API_KEY
 #     models:
 #       gpt-4o:
 #         provider: openai
 #         max_concurrent: 8
-# Data-plane auth (busbar 1.5.0+) is the built-in `keys` module (signed, minted
-# over the Admin API) rather than a static client-token list - see
-# https://getbusbar.com/docs/migration-1-5/ if migrating an older config.
 config: {}
 
 # -- The provider catalog (providers.yaml). OPTIONAL. A provider catalog
@@ -126,23 +126,16 @@ secrets:
   data: {}
 
 governance:
-  # -- Wire up the admin plane (auth.admin_auth) and switch the workload to a
-  # StatefulSet + PVC (replicas=1; horizontal scale of a single-writer store is
-  # NOT supported). CAVEAT (busbar 1.5.0): durable governance/key storage is now
-  # a signed store plugin (busbar-store-sqlite) loaded via `plugins.dir`, and
-  # this chart does not yet fetch/mount that plugin tarball for you (tracked as
-  # follow-up work) - so today governance.enabled gets you the admin token and
-  # the PVC scaffold, but key/group/audit state is still IN-MEMORY (ephemeral,
-  # reset on restart) until plugin support is added here.
+  # -- Enable governance (per-replica single-writer SQLite DB). Switches the
+  # workload to a StatefulSet with a PVC and replicas=1. Horizontal scale of a
+  # shared SQLite governance store is NOT supported.
   enabled: false
   # -- Name of the environment variable (injected from the Secret) that holds the
-  # admin token. busbar's admin plane REQUIRES this or every admin call is
-  # rejected. Put the token in `secrets.data` (or an existingSecret) under this
-  # key; the chart renders `auth.admin_auth: [admin-tokens: {token: {env: <this>}}]`.
+  # admin token. busbar REQUIRES an admin token when governance is enabled, or it
+  # refuses to boot. Put the token in `secrets.data` (or an existingSecret) under
+  # this key; the chart renders `governance.admin_token: ${<this>}` for you.
   adminTokenEnv: BUSBAR_ADMIN_TOKEN
-  # -- Path of the governance SQLite DB inside the PVC-backed volume. Currently
-  # only sizes/mounts the PVC (see the plugin caveat above); not yet wired into
-  # a `store:` config key.
+  # -- Path of the governance SQLite DB inside the PVC-backed volume.
   dbPath: /var/lib/busbar/governance.db
   persistence:
     # -- Size of the governance PVC.

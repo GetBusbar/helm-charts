@@ -3,7 +3,7 @@
 config:
   providers:
     anthropic:
-      api_key: { env: ANTHROPIC_KEY }
+      api_key_env: ANTHROPIC_KEY
   models:
     claude-sonnet:
       provider: anthropic
