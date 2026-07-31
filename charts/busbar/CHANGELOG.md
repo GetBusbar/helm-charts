@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.3
+
+Fixes an Artifact Hub scan failure (`image not found (package busbar:0.2.2)`) and a real
+ImagePullBackOff for anyone installing the chart with defaults: `appVersion`/the default image
+tag pointed at `1.5.0`, which has never been tagged or published — `getbusbar/busbar:1.5.0` does
+not exist on Docker Hub.
+
+- **Reverts the `1.5.0` look-ahead bump from 0.2.0/0.2.2.** `appVersion` (and the default
+  `image.tag`) go back to **`1.4.1`**, the real latest published release (verified against
+  Docker Hub: `getbusbar/busbar:1.4.1` resolves and matches `:latest`).
+- **Reverts the config-syntax rewrite from 0.2.0** (`configmap.yaml`, `_helpers.tpl`, the `ci/`
+  value fixtures, `values.yaml`/`README.md` wording) back to the syntax the real `1.4.1` binary
+  actually understands: `api_key_env`, `tls`/`admin_tls` `*_file` plaintext fields, and
+  `governance.admin_token`. The `1.5.0` secret-reference syntax (`api_key: { env }`, `cert: {
+  file }`, `auth.admin_auth`) does not exist in any published busbar release yet (confirmed
+  against the `1.4.1` source) — shipping it as the chart default would have swapped an
+  ImagePullBackOff for a config-parse boot failure instead of fixing anything.
+- The `bump-chart` workflow's "never move `appVersion` backward" guard (added in 0.2.2) is
+  unchanged and is still correct in general — the bug was a *manual* look-ahead bump to an
+  unreleased version, not the automation. Going forward, don't hand-bump `appVersion`/the image
+  annotation ahead of a tag that's actually published and pullable; let `bump-chart` track real
+  releases.
+
 ## 0.2.0
 
 busbar 1.5.0 config redesign — this chart now emits 1.5.0 config syntax:
