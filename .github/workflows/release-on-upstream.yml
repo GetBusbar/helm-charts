@@ -1,0 +1,112 @@
+# Publish a new busbar chart when core ships.
+#
+# On an upstream-release dispatch (or daily self-heal cron, or a manual run) this sets
+# charts/busbar's appVersion to the new busbar version and patch-bumps the chart's own
+# version, then pushes main via RELEASE_DISPATCH_TOKEN (bypass-capable; a plain
+# GITHUB_TOKEN push is rejected by branch protection). The chart-version change makes the
+# existing "Release Charts" workflow (push: main) package + publish the new chart, and
+# because the push is made with a PAT it does fire that workflow. No plain `push:` trigger
+# here, so merging this file cannot itself publish. Cron only acts when core's latest
+# release is newer than the committed appVersion, so an idle day is a no-op. bump_chart.py
+# only moves appVersion forward, so every path is idempotent.
+name: release-on-upstream
+
+on:
+  repository_dispatch:
+    types: [upstream-release]
+  schedule:
+    - cron: "19 7 * * *" # daily; minute staggered per repo so the fleet's crons don't all fire at once
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  # Serialize overlapping dispatch + cron so we never double-publish; never cancel mid-push.
+  group: release-on-upstream-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (bypass-capable token)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+          token: ${{ secrets.RELEASE_DISPATCH_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "busbar-bot"
+          git config user.email "bot@getbusbar.com"
+
+      - name: Resolve target busbar version and whether to act
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_DISPATCH_TOKEN }}
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          CHART=charts/busbar/Chart.yaml
+          committed="$(grep -E '^appVersion:' "$CHART" | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "committed appVersion: ${committed:-<none>}"
+          target=""
+          act=no
+          case "$EVENT_NAME" in
+            repository_dispatch)
+              # A real upstream release event: publish the version core told us about.
+              target="${DISPATCH_VERSION#v}"
+              act=yes
+              ;;
+            workflow_dispatch)
+              # Manual run always acts (bump_chart.py still no-ops if already current).
+              tag="$(gh api repos/GetBusbar/busbar/releases/latest --jq .tag_name 2>/dev/null || true)"
+              target="${tag#v}"
+              act=yes
+              ;;
+            schedule)
+              # Self-heal: only act when core's latest release is strictly newer than committed.
+              tag="$(gh api repos/GetBusbar/busbar/releases/latest --jq .tag_name 2>/dev/null || true)"
+              target="${tag#v}"
+              if [ -n "$target" ] && [ "$target" != "$committed" ] \
+                 && [ "$(printf '%s\n%s\n' "$committed" "$target" | sort -V | tail -1)" = "$target" ]; then
+                act=yes
+                echo "::notice::busbar advanced (${committed:-none} -> ${target}) -> publishing"
+              else
+                echo "::notice::no newer busbar release (committed=${committed:-none}, latest=${target:-none}) -> nothing to do"
+              fi
+              ;;
+          esac
+          if [ "$act" = yes ] && [ -z "$target" ]; then
+            echo "::error::could not resolve a target busbar version"
+            exit 1
+          fi
+          {
+            echo "act=$act"
+            echo "target=$target"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Bump chart appVersion + version to target
+        if: steps.resolve.outputs.act == 'yes'
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/bump_chart.py charts/busbar/Chart.yaml "$TARGET"
+
+      - name: Commit and push (fires Release Charts)
+        if: steps.resolve.outputs.act == 'yes'
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "::notice::chart already at busbar ${TARGET} — idempotent no-op"
+            exit 0
+          fi
+          git add charts/busbar/Chart.yaml
+          git commit -m "release: publish busbar ${TARGET} (chart appVersion + version bump)"
+          git push origin HEAD:main
