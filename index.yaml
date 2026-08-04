@@ -4,6 +4,53 @@ entries:
   - annotations:
       artifacthub.io/images: |
         - name: busbar
+          image: getbusbar/busbar:1.5.2
+      artifacthub.io/license: Apache-2.0
+      artifacthub.io/links: |
+        - name: Homepage
+          url: https://getbusbar.com
+        - name: Source
+          url: https://github.com/GetBusbar/busbar
+        - name: Chart Source
+          url: https://github.com/GetBusbar/helm-charts
+        - name: Support
+          url: https://github.com/GetBusbar/helm-charts/issues
+      artifacthub.io/maintainers: |
+        - name: Busbar Maintainers
+          email: support@getbusbar.com
+    apiVersion: v2
+    appVersion: 1.5.2
+    created: "2026-08-04T11:47:20.616497178Z"
+    description: A production-grade Helm chart for busbar, a Rust LLM gateway with
+      a data plane and a separate, loopback-by-default, mTLS-gated admin plane.
+    digest: 52b91572a427c0be6569fb29430c36ae3c22df62d36a4d76c93da445088415ec
+    home: https://getbusbar.com
+    icon: https://getbusbar.com/icon.png
+    keywords:
+    - llm
+    - gateway
+    - proxy
+    - ai
+    - openai
+    - anthropic
+    - rust
+    - governance
+    kubeVersion: '>=1.24.0-0'
+    maintainers:
+    - email: support@getbusbar.com
+      name: Busbar Maintainers
+      url: https://getbusbar.com
+    name: busbar
+    sources:
+    - https://github.com/GetBusbar/busbar
+    - https://github.com/GetBusbar/helm-charts
+    type: application
+    urls:
+    - https://github.com/GetBusbar/helm-charts/releases/download/busbar-0.2.6/busbar-0.2.6.tgz
+    version: 0.2.6
+  - annotations:
+      artifacthub.io/images: |
+        - name: busbar
           image: getbusbar/busbar:1.5.1
       artifacthub.io/license: Apache-2.0
       artifacthub.io/links: |
@@ -424,4 +471,4 @@ entries:
     urls:
     - https://github.com/GetBusbar/helm-charts/releases/download/busbar-0.1.0/busbar-0.1.0.tgz
     version: 0.1.0
-generated: "2026-08-03T02:00:24.286835414Z"
+generated: "2026-08-04T11:47:20.616532724Z"
