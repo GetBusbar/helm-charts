@@ -2,7 +2,7 @@ apiVersion: v2
 name: busbar
 description: A production-grade Helm chart for busbar, a Rust LLM gateway with a data plane and a separate, loopback-by-default, mTLS-gated admin plane.
 type: application
-version: 0.2.7
+version: 0.2.8
 appVersion: "1.5.3"
 kubeVersion: ">=1.24.0-0"
 home: https://getbusbar.com

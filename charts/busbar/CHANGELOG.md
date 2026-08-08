@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.2.8
+
+Chart 0.2.7 / appVersion 1.5.3 could not boot by any documented route. Three defects, all
+reproduced by running `getbusbar/busbar:1.5.3` with the chart's own rendered config mounted
+read-only at the chart's mount path as the chart's uid (65532), plus a fourth found on the way.
+
+- **The chart now manages `config.locked` / `config.overlay` (`configMutability`).** busbar 1.5.3
+  refuses to boot a mutable config (`config.locked: false`, its default) whose overlay backend is
+  not writable, and that backend defaults to `busbar-overlay.json` next to the resolved
+  `config.yaml`, i.e. `/etc/busbar/busbar-overlay.json` - a read-only ConfigMap subPath mount under
+  `readOnlyRootFilesystem: true`. Every install, including a correct one, died with
+  `[error] config is mutable (config.locked: false) but the overlay backend ... is not writable`.
+  New `configMutability.mode` defaults to **`locked`**: a Helm release is a GitOps deployment, the
+  ConfigMap is the source of truth, and locked is the only mode that behaves correctly at
+  `replicaCount > 1`. `mode: overlay` re-enables admin-API config mutation against the chart's
+  writable `/tmp` emptyDir, with the ephemerality and replica-divergence tradeoff spelled out in
+  `values.yaml` and the README. `mode: none` hands the keys back to you. `.Values.config.config`
+  always wins over the chart's value.
+- **`config` is now required, and an empty one fails the render.** `helm install my-busbar
+  busbar/busbar` with no values rendered a two-line listener stub that busbar rejects with
+  `[error] config.yaml: invalid YAML: missing field 'providers'`, while both READMEs claimed the
+  defaults "always boot". There is no honest bootable zero-config default for a gateway that
+  proxies upstream providers, so the chart fails fast with the minimal 1.5.x config inline in the
+  error, and both READMEs were corrected.
+- **Every config example is now busbar 1.5.x syntax.** The chart README's "Minimal" example was a
+  1.x config that 1.5.3 hard-rejects (`auth.client_tokens:`, `providers.openai.api_key_env:`).
+  Both READMEs, the `values.yaml` comments and all `ci/` fixtures now use secret references
+  (`api_key: { env: VAR }`), an `identity-providers` admin-tokens definition referenced by name
+  from `auth.admin_auth`, and pool members keyed on `model:` rather than the retired `target:`.
+- **`governance.enabled=true` no longer renders a config busbar refuses to boot.** It emitted a
+  top-level `governance:` block, which 1.5.3 flags as a 1.x marker
+  (`governance: block (dissolved into store / rate_card / per_request_fee / groups / advanced /
+  auth)`). It now renders `identity-providers.admin-tokens` + `auth.admin_auth: [admin-tokens]` +
+  `store:`. New `governance.store.module` defaults to `memory` because every durable store in
+  1.5.x is a signed store plugin and the 1.5.3 image ships none; naming another module without
+  wiring `config.plugins` fails the render with the exact error busbar would have printed.
+- **`adminTLS`/`dataTLS` now emit 1.5.x secret references.** Caught by `ct install` on a real kind
+  cluster: the chart still rendered the 1.4.x plaintext path fields, so every TLS-enabled install
+  died with `[error] config.yaml: invalid YAML: admin_tls: unknown field 'cert_file', expected one
+  of 'cert', 'key', 'client_ca'`. `cert_file`/`key_file`/`client_ca_file` are now
+  `cert: { file: ... }` / `key: { file: ... }` / `client_ca: { file: ... }`.
+- Added `ci/overlay-values.yaml` so `configMutability.mode=overlay` is covered by `ct install`.
+- The bundled `helm test` now retries. It could fire before the data Service endpoint had
+  propagated and fail instantly with `curl: (7) ... Could not connect to server`, reporting a
+  healthy gateway as broken.
+
+`appVersion` stays at `1.5.3`.
+
 ## 0.2.3
 
 Fixes an Artifact Hub scan failure (`image not found (package busbar:0.2.2)`) and a real

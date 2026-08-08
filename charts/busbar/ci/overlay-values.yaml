@@ -1,5 +1,9 @@
-# CI: exposed admin plane with cert-manager mTLS. Requires cert-manager + a
-# ClusterIssuer named "busbar-ca" in the cluster (the workflow installs both).
+# CI: configMutability.mode=overlay -- admin-API config mutation re-enabled with
+# the overlay backend on the chart's writable /tmp emptyDir. Single replica,
+# because a pod-local overlay diverges across replicas.
+replicaCount: 1
+configMutability:
+  mode: overlay
 config:
   identity-providers:
     admin-tokens:
@@ -26,13 +30,3 @@ secrets:
   data:
     ANTHROPIC_KEY: ci-dummy-anthropic-key
     BUSBAR_ADMIN_TOKEN: ci-dummy-admin-token
-service:
-  admin:
-    enabled: true
-adminTLS:
-  enabled: true
-  certManager:
-    enabled: true
-    issuerRef:
-      name: busbar-ca
-      kind: ClusterIssuer
