@@ -89,6 +89,43 @@ jobs:
             echo "target=$target"
           } >> "$GITHUB_OUTPUT"
 
+      # FAIL-CLOSED ON A MISSING IMAGE. Everything above this step trusts busbar's RELEASE OBJECT.
+      # The chart does not ship a release object, it ships an image reference: values.yaml has
+      # `tag: ""`, which _helpers.tpl resolves to Chart.yaml's appVersion. So bumping appVersion to a
+      # version whose container image has not been pushed publishes a chart that ImagePullBackOffs
+      # for every user who installs it.
+      #
+      # That is a real window, not a theoretical one: busbar's release.yml and docker.yml run in
+      # PARALLEL off the same tag push, so `releases/latest` can advance minutes before the image
+      # lands, and this workflow's `19 7 * * *` cron does not care what time of day that is. During
+      # the 1.5.3 release the window was open and nothing but timing kept a broken chart off
+      # ArtifactHub.
+      #
+      # The verifier reads the OCI Distribution API (what `docker pull` actually reads), not Docker
+      # Hub's tags index, which can lag hours behind a real push. Its self-test runs FIRST, the same
+      # "prove the gate before you trust its verdict" discipline core uses on every lint: a verifier
+      # that had rotted into always-passing would otherwise wave through exactly the broken publish
+      # it exists to prevent.
+      #
+      # On failure the chart simply stays where it is and the next cron retries, so this heals
+      # itself the moment the image appears. That is the same fail-closed-by-construction shape
+      # GetBusbar/homebrew-busbar gets for free by downloading its tarballs under `set -euo pipefail`.
+      - name: Verify the container image is pullable (self-test first)
+        if: steps.resolve.outputs.act == 'yes'
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/verify-image.sh
+          .github/scripts/verify-image.sh --selftest
+          # Read the repository from values.yaml rather than hardcoding it, so a chart that
+          # re-points at another registry path cannot leave this check silently verifying the old
+          # one. The tag is the appVersion we are about to write, which is what the chart will
+          # resolve at install time.
+          repo="$(python3 -c "import re,sys; print(re.search(r'^\s*repository:\s*(\S+)', open('charts/busbar/values.yaml').read(), re.M).group(1))")"
+          echo "chart will reference ${repo}:${TARGET}"
+          .github/scripts/verify-image.sh "$repo" "$TARGET" 10 30
+
       - name: Bump chart appVersion + version to target
         if: steps.resolve.outputs.act == 'yes'
         env:
