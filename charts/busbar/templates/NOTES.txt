@@ -4,8 +4,16 @@ WORKLOAD
 --------
 {{- if .Values.governance.enabled }}
   Governance is ENABLED -> a StatefulSet with a PVC and replicas=1.
-  busbar owns a single-writer SQLite DB at {{ .Values.governance.dbPath }}.
-  Horizontal scale of a shared SQLite governance store is NOT supported.
+  store.module = {{ .Values.governance.store.module }}
+  {{- if eq .Values.governance.store.module "memory" }}
+  WARNING: the store is IN-MEMORY. Keys, group usage and ledgers reset on every
+  restart. Durable stores in busbar 1.5.x are signed store plugins and the image
+  ships none, so mount one, set config.plugins.enabled=true + config.plugins.dir,
+  then set governance.store.module to it.
+  {{- else }}
+  Durable store DB at {{ .Values.governance.dbPath }}.
+  {{- end }}
+  Horizontal scale of a shared single-writer store is NOT supported.
 {{- else }}
   Stateless mode -> a Deployment{{ if .Values.autoscaling.enabled }} with an HPA ({{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} replicas){{ else }} with {{ .Values.replicaCount }} replica(s){{ end }}.
 {{- end }}
@@ -56,6 +64,21 @@ ADMIN PLANE (port 8081)
   must ALSO enable one of:
     --set adminTLS.enabled=true      (recommended: mTLS)
     --set adminInsecure=true         (insecure waiver; pair with a NetworkPolicy)
+{{- end }}
+
+CONFIG MUTABILITY
+-----------------
+  configMutability.mode = {{ .Values.configMutability.mode }}
+{{- if eq .Values.configMutability.mode "locked" }}
+  config.locked: true -> the admin API REFUSES config mutations. Change config by
+  editing values and running `helm upgrade` (reloadOnConfigChange rolls the pods).
+{{- else if eq .Values.configMutability.mode "overlay" }}
+  config.locked: false, overlay at {{ .Values.configMutability.overlayFile }}.
+  Admin-API config mutations persist to that file. If it is on the chart's /tmp
+  emptyDir it is POD-LOCAL and EPHEMERAL: mutations are lost on restart and on
+  helm upgrade, and multiple replicas will DIVERGE.
+{{- else }}
+  The chart writes no config.locked/config.overlay: you own them in .Values.config.
 {{- end }}
 
 Run the bundled health test any time:

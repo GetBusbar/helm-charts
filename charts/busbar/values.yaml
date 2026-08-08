@@ -1,10 +1,15 @@
 # Default values for busbar.
 # This is a YAML-formatted file.
-# Every value below is documented. The defaults render a secure, BOOTABLE
-# deployment: the admin plane stays on loopback (127.0.0.1:8081) and is NOT
-# exposed as a Service, so the gateway always satisfies its admin boot-guard.
-# To expose the admin plane you MUST also enable mTLS (adminTLS.enabled) or
-# set adminInsecure=true, or the chart will refuse to render.
+# Every value below is documented. The defaults are SECURE: the admin plane
+# stays on loopback (127.0.0.1:8081) and is NOT exposed as a Service, so the
+# gateway always satisfies its admin boot-guard. To expose the admin plane you
+# MUST also enable mTLS (adminTLS.enabled) or set adminInsecure=true, or the
+# chart will refuse to render.
+#
+# `config` below is REQUIRED and has no default: busbar is a proxy in front of
+# upstream LLM providers and refuses to boot without a `providers` map, so the
+# chart fails the render (with the config you need) rather than handing you a
+# CrashLoopBackOff.
 
 # -- Container image settings.
 image:
@@ -80,23 +85,83 @@ affinity: {}
 # -- The busbar deploy config (config.yaml). Rendered into a ConfigMap and
 # mounted at /etc/busbar/config.yaml (env BUSBAR_CONFIG). The chart ALWAYS
 # injects `listen` (data plane) and `admin_listen` (admin plane) into this
-# map, so do not set them here — they are managed by the chart from the
-# listener wiring below. Use ${VAR} interpolation for secrets; the referenced
-# env vars are injected from the Secret (see secrets.data).
+# map, so do not set them here: they are managed by the chart from the
+# listener wiring below.
 #
-# Example (a minimal bootable config supplying one provider + one client token):
+# REQUIRED. There is no meaningful zero-config busbar: the gateway is a proxy
+# in front of upstream LLM providers, and busbar 1.5.x refuses to boot without
+# a `providers` map ("config.yaml: invalid YAML: missing field `providers`").
+# The chart therefore FAILS THE RENDER with an explanatory message when this is
+# empty, rather than shipping you a CrashLoopBackOff.
+#
+# This is busbar 1.5.x config syntax. Secret-bearing fields are SECRET
+# REFERENCES (`api_key: { env: VAR }`), not `*_env` string fields; the
+# referenced env vars are injected from the Secret (see secrets.data).
+#
+# Minimal bootable example (one provider, one model, one pool, admin tokens):
 #   config:
+#     identity-providers:
+#       admin-tokens:
+#         module: admin-tokens
+#         token: { env: BUSBAR_ADMIN_TOKEN }
 #     auth:
-#       chain: ["client-tokens"]
-#       client_tokens: ["${BUSBAR_CLIENT_TOKEN}"]
+#       chain: []                 # [] is an OPEN RELAY; set a real chain in prod
+#       admin_auth: [admin-tokens]
 #     providers:
-#       openai:
-#         api_key_env: OPENAI_API_KEY
+#       anthropic:
+#         api_key: { env: ANTHROPIC_KEY }
 #     models:
-#       gpt-4o:
-#         provider: openai
-#         max_concurrent: 8
+#       claude:
+#         provider: anthropic
+#     pools:
+#       default:
+#         members:
+#           - model: claude       # `model:`, not the retired 1.4.x `target:`
 config: {}
+
+# -- How busbar treats its own config at runtime. busbar 1.5.3 REFUSES TO BOOT
+# a mutable config (`config.locked: false`, its default) whose overlay backend
+# is not writable, and that backend defaults to `busbar-overlay.json` NEXT TO
+# the resolved config.yaml, i.e. /etc/busbar/busbar-overlay.json. This chart
+# mounts config.yaml from a read-only ConfigMap with readOnlyRootFilesystem,
+# so an unmanaged default crash-loops with:
+#   [error] config is mutable (config.locked: false) but the overlay backend
+#   '/etc/busbar/busbar-overlay.json' is not writable ...
+# The chart therefore manages `config.locked` / `config.overlay.file` for you.
+configMutability:
+  # -- One of:
+  #
+  #   locked  (DEFAULT) -- renders `config: { locked: true }`. A Helm release IS
+  #     a GitOps deployment: the ConfigMap is the source of truth and
+  #     `reloadOnConfigChange` rolls the pods whenever it changes. Locked means
+  #     the admin API REFUSES config mutations (it still serves keys, stats,
+  #     /config/reload and everything else); you change config by changing
+  #     values and running `helm upgrade`. Chosen as the default because it is
+  #     the only mode whose behaviour is correct at replicaCount > 1.
+  #
+  #   overlay -- renders `config: { locked: false, overlay: { file: <overlayFile> } }`,
+  #     re-enabling admin-API config mutation. READ THIS BEFORE USING IT: the
+  #     default overlayFile lives on the chart's /tmp emptyDir, so the overlay
+  #     is POD-LOCAL AND EPHEMERAL. Every admin-API config mutation is lost on
+  #     restart, on `helm upgrade`, and on any pod reschedule, and with
+  #     replicaCount > 1 (or the HPA on) each replica keeps its OWN overlay, so
+  #     your replicas WILL DIVERGE and identical requests will get different
+  #     answers depending on which pod they land on. Only sane at
+  #     replicaCount: 1, or with overlayFile pointed at genuinely shared
+  #     durable storage that every replica mounts read-write.
+  #
+  #   none -- the chart writes nothing; you own `config.locked` /
+  #     `config.overlay` yourself inside `.Values.config`. Use this if you mount
+  #     your own writable volume for the overlay.
+  #
+  # Anything you set under `.Values.config.config` wins over the chart's value
+  # in every mode.
+  mode: locked
+  # -- Overlay backend path. Only used when mode=overlay. The default is on the
+  # chart's /tmp emptyDir, which is writable but POD-LOCAL AND EPHEMERAL (see
+  # above). Point this at a mount that is writable by uid 65532 and shared by
+  # all replicas if you need durable, non-diverging overlay state.
+  overlayFile: /tmp/busbar-overlay.json
 
 # -- The provider catalog (providers.yaml). OPTIONAL. A provider catalog
 # SHIPS INSIDE THE IMAGE at /etc/busbar/providers.yaml. Only set this to
@@ -116,26 +181,52 @@ secrets:
   # -- Use an existing Secret (its keys are injected as env vars via envFrom).
   # When set, `secrets.data` is ignored and no Secret is rendered.
   existingSecret: ""
-  # -- Key/value secret data injected as environment variables and referenced
-  # from config via ${VAR}. Provider API keys, auth.client_tokens and
-  # governance.admin_token belong here.
+  # -- Key/value secret data injected as environment variables. Config refers to
+  # them by SECRET REFERENCE (`api_key: { env: ANTHROPIC_KEY }`,
+  # `token: { env: BUSBAR_ADMIN_TOKEN }`). Provider API keys and the admin
+  # token belong here.
   # e.g.
   #   data:
-  #     OPENAI_API_KEY: sk-...
-  #     BUSBAR_CLIENT_TOKEN: my-client-token
+  #     ANTHROPIC_KEY: sk-ant-...
+  #     BUSBAR_ADMIN_TOKEN: a-long-random-admin-token
   data: {}
 
+# busbar 1.5.x DISSOLVED the old top-level `governance:` config block (it is now
+# a hard 1.x marker that the binary refuses to boot) into `store:` plus an
+# admin-tokens identity provider wired through `auth.admin_auth`. This values
+# block keeps the same chart-level switch and now renders that 1.5.x shape.
 governance:
-  # -- Enable governance (per-replica single-writer SQLite DB). Switches the
-  # workload to a StatefulSet with a PVC and replicas=1. Horizontal scale of a
-  # shared SQLite governance store is NOT supported.
+  # -- Enable governance: an admin-tokens identity provider on `auth.admin_auth`,
+  # a durable-store slot, and a single-writer workload. Switches the workload to
+  # a StatefulSet with a PVC and replicas=1. Horizontal scale of a shared
+  # single-writer store is NOT supported.
   enabled: false
   # -- Name of the environment variable (injected from the Secret) that holds the
-  # admin token. busbar REQUIRES an admin token when governance is enabled, or it
-  # refuses to boot. Put the token in `secrets.data` (or an existingSecret) under
-  # this key; the chart renders `governance.admin_token: ${<this>}` for you.
+  # admin token. busbar REQUIRES an admin token to gate the admin plane. Put the
+  # token in `secrets.data` (or an existingSecret) under this key; the chart
+  # renders `identity-providers.admin-tokens` + `auth.admin_auth: [admin-tokens]`
+  # for you.
   adminTokenEnv: BUSBAR_ADMIN_TOKEN
-  # -- Path of the governance SQLite DB inside the PVC-backed volume.
+  store:
+    # -- Which `store:` module busbar uses for keys, group usage and ledgers.
+    #
+    #   memory (DEFAULT) -- in-process, EPHEMERAL: keys, group usage and ledgers
+    #     reset on every restart. This is what the chart can guarantee boots,
+    #     because every durable store in 1.5.x is a signed store plugin and
+    #     busbar 1.5.3 ships NO plugin tarballs in its image
+    #     (`busbar --list-plugins` on getbusbar/busbar:1.5.3 prints
+    #     "no plugin tarballs found").
+    #
+    #   sqlite (or any other store-plugin name) -- durable, and requires that
+    #     YOU supply the signed plugin: mount the tarball into the pod and set
+    #     `config.plugins.enabled: true` plus `config.plugins.dir` yourself. The
+    #     chart fails the render if you name a non-memory module without doing
+    #     that, because busbar would otherwise exit 1 with
+    #     "store.module: '<name>' requires the plugin subsystem, but
+    #     plugins.enabled is false".
+    module: memory
+  # -- Path of the governance DB inside the PVC-backed volume. Rendered as
+  # `store.settings.db_path` for non-memory store modules.
   dbPath: /var/lib/busbar/governance.db
   persistence:
     # -- Size of the governance PVC.
