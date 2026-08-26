@@ -1,6 +1,8 @@
 # busbar Helm charts
 
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/busbar-helm-charts)](https://artifacthub.io/packages/search?repo=busbar-helm-charts)
+[![CI](https://github.com/GetBusbar/helm-charts/actions/workflows/lint-test.yml/badge.svg)](https://github.com/GetBusbar/helm-charts/actions/workflows/lint-test.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 The official Helm chart repository for [busbar](https://getbusbar.com), a Rust LLM gateway.
 
