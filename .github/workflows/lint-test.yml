@@ -41,7 +41,7 @@ jobs:
 
       - name: Create kind cluster
         if: steps.list-changed.outputs.changed == 'true'
-        uses: helm/kind-action@v1.12.0
+        uses: helm/kind-action@v1.15.0
 
       # cert-manager + a CA ClusterIssuer named "busbar-ca" so the ci/admin-mtls
       # install test can exercise the exposed-admin-plane mTLS path end to end.
