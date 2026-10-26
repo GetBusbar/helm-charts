@@ -26,11 +26,13 @@ on:
   upstream:
   - from: GetBusbar/busbar@v*
     checks: [chart-bump]
+  # chart-release is DISARMED (2026-10-26, actions-retire): its landed deploy failed on every main tip
+  # move for want of HELM_CHARTS_RELEASE_TOKEN, and its target (GitHub Releases + gh-pages) goes away
+  # when GitHub becomes a read-only mirror of Forgejo. Re-arm with the landed step below once the owner
+  # picks the chart's new home (Forgejo releases/pages or an OCI registry) and creates its token:
+  #   landed:
+  #   - deploy: {check: chart-release, secrets: [HELM_CHARTS_RELEASE_TOKEN]}
   manual: [chart-bump, chart-release]
-  landed:
-  - deploy:
-      check: chart-release
-      secrets: [HELM_CHARTS_RELEASE_TOKEN]
 checks:
   files-present:
     run: test -f charts/busbar/Chart.yaml
