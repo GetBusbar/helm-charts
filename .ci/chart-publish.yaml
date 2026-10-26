@@ -1,0 +1,92 @@
+# Replaces .github/workflows/release.yml (chart-releaser on push to main), release-on-upstream.yml
+# (main) and bump-chart.yml (dev) of GetBusbar/helm-charts. GitHub Actions is retired.
+#
+# This file is named `chart-publish` on purpose: no such branch exists, so it never judges a PR. It
+# exists to carry `to: main` post-merge and scheduled work WITHOUT gating qa->main PRs. Its one
+# `move` check (files-present) is only there because the file checker requires a move check.
+#
+#   chart-bump    schedule daily + upstream GetBusbar/busbar@v* + manual: when busbar core's latest
+#                 release is newer than charts/busbar appVersion, verify the image is pullable,
+#                 bump appVersion + chart version, push main with a bypass-capable token.
+#                 Secret HELM_CHARTS_PUSH_TOKEN (scope: repo GetBusbar/helm-charts, check chart-bump).
+#                 It must never be named under `move`.
+#   chart-release landed on main (any tip move, incl. chart-bump's push): chart-releaser packages
+#                 every chart, uploads the .tgz to GitHub Releases (--skip-existing) and updates the
+#                 gh-pages index. Secret HELM_CHARTS_RELEASE_TOKEN (scope: on_landed, repo
+#                 GetBusbar/helm-charts). Also listed under `manual` only so the checker accepts a
+#                 check that a landed `deploy` alone references; a manual run has no secret and
+#                 fails fast on purpose.
+# Dropped: the keyless Sigstore build-provenance attestation (needs GitHub's OIDC identity).
+to: main
+on:
+  move: [files-present]
+  schedule:
+  - cron: "19 7 * * *"
+    checks: [chart-bump]
+  upstream:
+  - from: GetBusbar/busbar@v*
+    checks: [chart-bump]
+  manual: [chart-bump, chart-release]
+  landed:
+  - deploy:
+      check: chart-release
+      secrets: [HELM_CHARTS_RELEASE_TOKEN]
+checks:
+  files-present:
+    run: test -f charts/busbar/Chart.yaml
+  chart-bump:
+    requires: [git, curl, jq, python3]
+    run: |
+      set -euo pipefail
+      T="${HELM_CHARTS_PUSH_TOKEN:-}"
+      CHART=charts/busbar/Chart.yaml
+      AUTH=(); [ -n "$T" ] && AUTH=(-H "Authorization: Bearer $T")
+      committed="$(grep -E '^appVersion:' "$CHART" | sed -E 's/.*"([^"]+)".*/\1/')"
+      tag="$(curl -fsSL "${AUTH[@]}" https://api.github.com/repos/GetBusbar/busbar/releases/latest | jq -r .tag_name)"
+      target="${tag#v}"
+      echo "committed appVersion=${committed:-none} busbar latest=${target:-none}"
+      [ -n "$target" ] && [ "$target" != null ] || { echo "could not resolve busbar's latest release"; exit 1; }
+      if [ "$target" = "$committed" ] || [ "$(printf '%s\n%s\n' "$committed" "$target" | sort -V | tail -1)" != "$target" ]; then
+        echo "no newer busbar release: nothing to do"; exit 0
+      fi
+      # Fail closed on a missing image: the chart resolves its tag from appVersion.
+      chmod +x .github/scripts/verify-image.sh
+      .github/scripts/verify-image.sh --selftest
+      repo="$(python3 -c "import re; print(re.search(r'^\s*repository:\s*(\S+)', open('charts/busbar/values.yaml').read(), re.M).group(1))")"
+      echo "chart will reference ${repo}:${target}"
+      .github/scripts/verify-image.sh "$repo" "$target" 10 30
+      python3 .github/scripts/bump_chart.py "$CHART" "$target"
+      if git diff --quiet; then echo "chart already at ${target}: no-op"; exit 0; fi
+      git add "$CHART"
+      git -c user.name=busbar-bot -c user.email=bot@getbusbar.com commit -q -m "release: publish busbar ${target} (chart appVersion + version bump)"
+      git --no-pager show --stat --oneline HEAD
+      if [ -z "$T" ]; then
+        echo "DRY RUN OK: HELM_CHARTS_PUSH_TOKEN is not set, so main was not pushed (a scheduled run has it)"; exit 1
+      fi
+      B64="$(printf 'x-access-token:%s' "$T" | base64 | tr -d '\n')"
+      git -c "http.https://github.com/.extraheader=Authorization: basic $B64" push https://github.com/GetBusbar/helm-charts.git HEAD:refs/heads/main
+  chart-release:
+    requires: [git, curl, tar]
+    run: |
+      set -euo pipefail
+      T="${HELM_CHARTS_RELEASE_TOKEN:-}"
+      [ -n "$T" ] || { echo "HELM_CHARTS_RELEASE_TOKEN is empty: chart-release only runs as a landed deploy step"; exit 1; }
+      SHA="$(git rev-parse HEAD)"
+      os=$(uname -s | tr A-Z a-z); arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac
+      W="$(mktemp -d)"; trap 'rm -rf "$W"' EXIT
+      HELM=v3.16.3; CR=1.7.0
+      curl -fsSL "https://get.helm.sh/helm-$HELM-$os-$arch.tar.gz" | tar -xz -C "$W" "$os-$arch/helm"
+      curl -fsSL "https://github.com/helm/chart-releaser/releases/download/v$CR/chart-releaser_${CR}_${os}_${arch}.tar.gz" | tar -xz -C "$W" cr
+      PATH="$W/$os-$arch:$W:$PATH"
+      export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+      GIT_CONFIG_VALUE_0="Authorization: basic $(printf 'x-access-token:%s' "$T" | base64 | tr -d '\n')"; export GIT_CONFIG_VALUE_0
+      git clone -q https://github.com/GetBusbar/helm-charts.git "$W/repo"
+      cd "$W/repo"
+      git checkout -q "$SHA"
+      git config user.name busbar-bot; git config user.email bot@getbusbar.com
+      mkdir -p .cr-release-packages .cr-index
+      for c in charts/*/; do [ -f "$c/Chart.yaml" ] && cr package "$c" --package-path .cr-release-packages; done
+      cr upload -o GetBusbar -r helm-charts --token "$T" --package-path .cr-release-packages --skip-existing
+      cr index -o GetBusbar -r helm-charts --token "$T" --pages-branch gh-pages --package-path .cr-release-packages --index-path .cr-index/index.yaml --push
+env:
+  CI: 'true'
