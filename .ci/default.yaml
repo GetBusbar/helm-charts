@@ -22,9 +22,10 @@ checks:
       # chart-testing compares with the target branch: make sure it is there.
       git fetch -q origin main:refs/remotes/origin/main 2>/dev/null || true
       git fetch -q --unshallow 2>/dev/null || true
-      CTARGS="--config ct.yaml --chart-yaml-schema $T/ct-$CT/etc/chart_schema.yaml --lint-conf $T/ct-$CT/etc/lintconf.yaml"
+      # list-changed and install take only --config; the schema and lint-conf flags belong to lint.
+      CTARGS="--config ct.yaml"
       changed=$(ct list-changed $CTARGS)
-      ct lint $CTARGS --check-version-increment=false
+      ct lint $CTARGS --chart-yaml-schema $T/ct-$CT/etc/chart_schema.yaml --lint-conf $T/ct-$CT/etc/lintconf.yaml --check-version-increment=false
       if [ -n "$changed" ]; then
         [ -x "$T/bin/kind" ] || { curl -fsSLo "$T/bin/kind" "https://kind.sigs.k8s.io/dl/$KIND/kind-$os-$arch" && chmod +x "$T/bin/kind"; }
         [ -x "$T/bin/kubectl" ] || { curl -fsSLo "$T/bin/kubectl" "https://dl.k8s.io/release/$KUBECTL/bin/$os/$arch/kubectl" && chmod +x "$T/bin/kubectl"; }
