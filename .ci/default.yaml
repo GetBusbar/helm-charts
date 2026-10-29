@@ -19,11 +19,12 @@ checks:
       PATH="$T/ct-$CT:$PATH"
       python3 -m venv "$T/venv" && "$T/venv/bin/pip" install -q yamllint==1.33.0 yamale==4.0.4 && PATH="$T/venv/bin:$PATH"
       helm version --short
-      # chart-testing compares with the target branch: make sure it is there.
-      git fetch -q origin main:refs/remotes/origin/main 2>/dev/null || true
-      git fetch -q --unshallow 2>/dev/null || true
-      # list-changed and install take only --config; the schema and lint-conf flags belong to lint.
-      CTARGS="--config ct.yaml"
+      # chart-testing diffs against the branch the change targets. The check's workdir has no
+      # `origin` remote (ModernCI #3037), so the target ref is written from the run's own facts
+      # (env_from_run below), never fetched; a missing fact fails the check loudly (set -u).
+      git update-ref "refs/remotes/origin/$MODERNCI_TO" "$MODERNCI_TO_SHA"
+      # list-changed and install take --config and the target; the schema and lint-conf flags belong to lint.
+      CTARGS="--config ct.yaml --target-branch $MODERNCI_TO"
       changed=$(ct list-changed $CTARGS)
       ct lint $CTARGS --chart-yaml-schema $T/ct-$CT/etc/chart_schema.yaml --lint-conf $T/ct-$CT/etc/lintconf.yaml --check-version-increment=false
       if [ -n "$changed" ]; then
@@ -61,6 +62,7 @@ checks:
         kubectl -n cert-manager wait --for=condition=Ready certificate/busbar-ca --timeout=120s
         ct install $CTARGS
       fi
+    env_from_run: [MODERNCI_TO, MODERNCI_TO_SHA]
     requires:
     - python3
     - docker
