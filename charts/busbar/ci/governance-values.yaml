@@ -1,13 +1,20 @@
-# CI: governance path — StatefulSet + PVC, requires an admin token.
+# CI: governance path -- StatefulSet + PVC, requires an admin token. The store
+# stays on `memory` because busbar 1.5.3's image ships no signed store plugin.
 config:
+  auth:
+    chain: []
   providers:
     anthropic:
-      api_key_env: ANTHROPIC_KEY
+      api_key:
+        env: ANTHROPIC_KEY
   models:
     claude-sonnet:
       provider: anthropic
       max_concurrent: 20
-      max_requests: -1
+  pools:
+    default:
+      members:
+        - model: claude-sonnet
 secrets:
   create: true
   data:

@@ -1,6 +1,65 @@
 {{- include "busbar.validateAdmin" . -}}
 {{- include "busbar.validateGovernance" . -}}
+{{- include "busbar.validateConfig" . -}}
 {{- if not .Values.existingConfigMap -}}
+{{- /*
+Chart-managed additions to .Values.config, deep-merged with the user's map so a
+key the chart wires (config.locked, auth.admin_auth, store) can never collide
+with, or duplicate, a key the user set.
+
+The chart only ever contributes a key the user did NOT set. That explicit
+hasKey guard matters: sprig `merge` is mergo underneath, which treats `false`
+and other zero values in the destination as "unset" and happily overwrites
+them, so a user's `config: { locked: false }` would otherwise be silently
+flipped back to true.
+*/ -}}
+{{- $userCfg := .Values.config | default dict -}}
+{{- $userCfgSection := dict -}}
+{{- if hasKey $userCfg "config" -}}
+{{- $userCfgSection = $userCfg.config | default dict -}}
+{{- end -}}
+{{- $userAuth := dict -}}
+{{- if hasKey $userCfg "auth" -}}
+{{- $userAuth = $userCfg.auth | default dict -}}
+{{- end -}}
+{{- $add := dict -}}
+{{- $mut := .Values.configMutability | default dict -}}
+{{- $mode := $mut.mode | default "locked" -}}
+{{- $cfgSection := dict -}}
+{{- if eq $mode "locked" -}}
+{{- if not (hasKey $userCfgSection "locked") -}}
+{{- $_ := set $cfgSection "locked" true -}}
+{{- end -}}
+{{- else if eq $mode "overlay" -}}
+{{- if not (hasKey $userCfgSection "locked") -}}
+{{- $_ := set $cfgSection "locked" false -}}
+{{- end -}}
+{{- if not (hasKey $userCfgSection "overlay") -}}
+{{- $_ := set $cfgSection "overlay" (dict "file" ($mut.overlayFile | default "/tmp/busbar-overlay.json")) -}}
+{{- end -}}
+{{- else if ne $mode "none" -}}
+{{- fail (printf "\n\nconfigMutability.mode must be one of \"locked\", \"overlay\" or \"none\" (got %q).\n" $mode) -}}
+{{- end -}}
+{{- if $cfgSection -}}
+{{- $_ := set $add "config" $cfgSection -}}
+{{- end -}}
+{{- if .Values.governance.enabled -}}
+{{- if not (hasKey $userCfg "identity-providers") -}}
+{{- $_ := set $add "identity-providers" (dict "admin-tokens" (dict "module" "admin-tokens" "token" (dict "env" .Values.governance.adminTokenEnv))) -}}
+{{- end -}}
+{{- if not (hasKey $userAuth "admin_auth") -}}
+{{- $_ := set $add "auth" (dict "admin_auth" (list "admin-tokens")) -}}
+{{- end -}}
+{{- if not (hasKey $userCfg "store") -}}
+{{- $storeModule := .Values.governance.store.module | default "memory" -}}
+{{- $store := dict "module" $storeModule -}}
+{{- if ne $storeModule "memory" -}}
+{{- $_ := set $store "settings" (dict "db_path" .Values.governance.dbPath) -}}
+{{- end -}}
+{{- $_ := set $add "store" $store -}}
+{{- end -}}
+{{- end -}}
+{{- $cfg := merge (deepCopy $userCfg) $add -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -15,32 +74,34 @@ data:
     {{- if .Values.adminInsecure }}
     admin_insecure: true
     {{- end }}
+    {{- /* busbar 1.5.x removed the plaintext *_file path fields; cert/key/client_ca
+           are secret references, and `file:` is the file-backed variant. */}}
     {{- if .Values.adminTLS.enabled }}
     admin_tls:
-      cert_file: /etc/busbar/tls/admin/tls.crt
-      key_file: /etc/busbar/tls/admin/tls.key
-      {{- /* busbar's boot-guard requires client_ca_file (real mTLS), not just server TLS.
+      cert:
+        file: /etc/busbar/tls/admin/tls.crt
+      key:
+        file: /etc/busbar/tls/admin/tls.key
+      {{- /* busbar's boot-guard requires a client CA (real mTLS), not just server TLS.
              With an explicit client CA, use it. Otherwise fall back to the ca.crt that
              cert-manager writes into the server-cert Secret (the issuing CA) so mTLS works
              out of the box: admin clients present certs signed by that same CA. */}}
       {{- if .Values.adminTLS.clientCASecret }}
-      client_ca_file: /etc/busbar/tls/admin-ca/ca.crt
+      client_ca:
+        file: /etc/busbar/tls/admin-ca/ca.crt
       {{- else if .Values.adminTLS.certManager.enabled }}
-      client_ca_file: /etc/busbar/tls/admin/ca.crt
+      client_ca:
+        file: /etc/busbar/tls/admin/ca.crt
       {{- end }}
     {{- end }}
     {{- if .Values.dataTLS.enabled }}
     tls:
-      cert_file: /etc/busbar/tls/data/tls.crt
-      key_file: /etc/busbar/tls/data/tls.key
+      cert:
+        file: /etc/busbar/tls/data/tls.crt
+      key:
+        file: /etc/busbar/tls/data/tls.key
     {{- end }}
-    {{- if .Values.governance.enabled }}
-    governance:
-      enabled: true
-      db_path: {{ .Values.governance.dbPath | quote }}
-      admin_token: ${{ printf "{%s}" .Values.governance.adminTokenEnv }}
-    {{- end }}
-    {{- with .Values.config }}
+    {{- with $cfg }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
   {{- with .Values.providersCatalog }}
