@@ -43,9 +43,6 @@ ADMIN PLANE (port 8081)
   {{- if .Values.adminTLS.enabled }}
   It requires mTLS. Present a client cert chaining to your client CA and an
   admin token (x-admin-token / Bearer) to reach /api/v1/admin/*.
-  {{- else if .Values.adminInsecure }}
-  WARNING: admin_insecure=true -> the admin plane accepts plaintext admin
-  traffic with NO mTLS. Restrict it with a NetworkPolicy (networkPolicy.enabled).
   {{- end }}
 
   Health probe (unauthenticated, bypasses auth on the admin port too):
@@ -61,9 +58,8 @@ ADMIN PLANE (port 8081)
 
   To EXPOSE the admin plane cluster-wide, set service.admin.enabled=true. Because
   busbar refuses to boot with a non-loopback admin listener that lacks mTLS, you
-  must ALSO enable one of:
-    --set adminTLS.enabled=true      (recommended: mTLS)
-    --set adminInsecure=true         (insecure waiver; pair with a NetworkPolicy)
+  must ALSO enable mTLS:
+    --set adminTLS.enabled=true
 {{- end }}
 
 CONFIG MUTABILITY

@@ -71,9 +71,6 @@ data:
     {{- /* Chart-managed listeners: never taken from .Values.config */}}
     listen: "0.0.0.0:8080"
     admin_listen: "{{ include "busbar.adminListen" . }}"
-    {{- if .Values.adminInsecure }}
-    admin_insecure: true
-    {{- end }}
     {{- /* busbar 1.5.x removed the plaintext *_file path fields; cert/key/client_ca
            are secret references, and `file:` is the file-backed variant. */}}
     {{- if .Values.adminTLS.enabled }}

@@ -130,7 +130,6 @@
         "clientCASecret": { "type": "string" }
       }
     },
-    "adminInsecure": { "type": "boolean" },
     "dataTLS": {
       "type": "object",
       "additionalProperties": false,

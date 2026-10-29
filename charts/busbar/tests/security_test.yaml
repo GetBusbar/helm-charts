@@ -1,0 +1,53 @@
+suite: secure defaults
+templates:
+  - deployment.yaml
+  - configmap.yaml
+  - secret.yaml
+values:
+  - ../ci/default-values.yaml
+tests:
+  - it: pod runs non-root as uid/gid 65532
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 65532
+      - equal:
+          path: spec.template.spec.securityContext.runAsGroup
+          value: 65532
+  - it: container is non-root uid 65532, read-only rootfs, no privilege escalation, all caps dropped
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 65532
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value: [ALL]
+  - it: never renders admin_insecure, even when the removed adminInsecure value is set
+    template: configmap.yaml
+    set:
+      adminInsecure: true
+    asserts:
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: admin_insecure
+  - it: refuses an exposed admin plane without mTLS (adminInsecure is no waiver)
+    template: deployment.yaml
+    set:
+      service.admin.enabled: true
+      adminInsecure: true
+    asserts:
+      - failedTemplate: {}
