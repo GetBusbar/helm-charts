@@ -30,13 +30,12 @@ busbar always runs **two separate listeners**:
 - **Admin plane** (`admin_listen`, default loopback `127.0.0.1:8081`) — the runtime admin API.
 
 busbar enforces a **boot-guard**: a non-loopback `admin_listen` *refuses to boot* unless the admin
-listener requires **mTLS** (`admin_tls` with a `client_ca`) **or** an explicit `admin_insecure:
-true` waiver is set.
+listener requires **mTLS** (`admin_tls` with a `client_ca`). busbar 1.6.0 has no insecure waiver.
 
 The chart is secure by default: the admin plane stays on loopback and is **not** exposed, so the
 admin boot-guard is always satisfied. To expose the admin plane (`service.admin.enabled=true`)
-you must also enable `adminTLS.enabled=true` (mTLS, ideally via cert-manager) or `adminInsecure=true`,
-or the chart fails the render with a clear message.
+you must also enable `adminTLS.enabled=true` (mTLS, ideally via cert-manager), or the chart fails
+the render with a clear message.
 
 ## Config mutability
 

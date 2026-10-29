@@ -3,7 +3,7 @@
 # Every value below is documented. The defaults are SECURE: the admin plane
 # stays on loopback (127.0.0.1:8081) and is NOT exposed as a Service, so the
 # gateway always satisfies its admin boot-guard. To expose the admin plane you
-# MUST also enable mTLS (adminTLS.enabled) or set adminInsecure=true, or the
+# MUST also enable mTLS (adminTLS.enabled; there is no insecure waiver), or the
 # chart will refuse to render.
 #
 # `config` below is REQUIRED and has no default: busbar is a proxy in front of
@@ -247,7 +247,7 @@ service:
   admin:
     # -- Expose the admin plane via a Service. DEFAULT false: the admin plane
     # stays on loopback and the gateway always boots. Setting this true REQUIRES
-    # adminTLS.enabled=true or adminInsecure=true (the chart enforces this and
+    # adminTLS.enabled=true (the chart enforces this and
     # binds admin_listen to 0.0.0.0:8081 so it is reachable in-cluster).
     enabled: false
     # -- Admin Service type (always cluster-internal).
@@ -257,7 +257,7 @@ service:
 
 adminTLS:
   # -- Terminate mTLS on the admin listener. Satisfies the non-loopback admin
-  # boot-guard. Required (unless adminInsecure) when service.admin.enabled=true.
+  # boot-guard. Required when service.admin.enabled=true.
   enabled: false
   certManager:
     # -- Have cert-manager issue the admin server cert via a Certificate.
@@ -273,10 +273,6 @@ adminTLS:
   # -- Secret holding the client CA bundle (ca.crt) that admin clients must
   # chain to (mTLS). Mounted at /etc/busbar/tls/admin-ca.
   clientCASecret: ""
-
-# -- Explicit boot-guard waiver: bind a non-loopback admin listener WITHOUT
-# mTLS. Insecure; use only in trusted, network-policied environments.
-adminInsecure: false
 
 dataTLS:
   # -- Terminate TLS on the data listener (busbar-native TLS, not Ingress).

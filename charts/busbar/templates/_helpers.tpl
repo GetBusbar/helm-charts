@@ -82,18 +82,18 @@ admin Service is enabled we bind 0.0.0.0 so it is reachable in-cluster.
 
 {{/*
 Boot-guard enforcement: a non-loopback admin_listen refuses to boot unless it
-requires mTLS (adminTLS) or adminInsecure is set. Fail the render early with a
+requires mTLS (adminTLS); busbar 1.6.0 has no insecure waiver. Fail the render early with a
 clear message so the user never ships an un-bootable deployment.
 */}}
 {{- define "busbar.validateAdmin" -}}
 {{- if .Values.service.admin.enabled -}}
-{{- if and (not .Values.adminTLS.enabled) (not .Values.adminInsecure) -}}
-{{ fail "\n\nservice.admin.enabled=true exposes the admin plane on a non-loopback address (0.0.0.0:8081), which busbar's boot-guard REFUSES TO BOOT unless the admin listener requires mTLS or an explicit insecure waiver is set.\n\nFix one of:\n  --set adminTLS.enabled=true    (recommended: mTLS via cert-manager or an existing cert + client CA)\n  --set adminInsecure=true       (insecure waiver; only in a trusted, network-policied namespace)\n\nOr leave service.admin.enabled=false (default) to keep the admin plane on loopback.\n" }}
+{{- if not .Values.adminTLS.enabled -}}
+{{ fail "\n\nservice.admin.enabled=true exposes the admin plane on a non-loopback address (0.0.0.0:8081), which busbar's boot-guard REFUSES TO BOOT unless the admin listener requires mTLS (busbar 1.6.0 has no insecure waiver).\n\nFix:\n  --set adminTLS.enabled=true    (mTLS via cert-manager or an existing cert + client CA)\n\nOr leave service.admin.enabled=false (default) to keep the admin plane on loopback.\n" }}
 {{- end -}}
 {{- /* mTLS needs a client CA, not just a server cert. cert-manager wires the issuing CA
        automatically; with an existingSecret the operator must supply a client CA. */}}
 {{- if and .Values.adminTLS.enabled (not .Values.adminTLS.certManager.enabled) (not .Values.adminTLS.clientCASecret) -}}
-{{ fail "\n\nadminTLS.enabled provides a server cert but no client CA, and busbar's admin boot-guard requires mTLS (client_ca) on a network-exposed admin listener; a server cert alone is not enough.\n\nFix one of:\n  --set adminTLS.certManager.enabled=true   (cert-manager wires the issuing CA as the client CA automatically)\n  --set adminTLS.clientCASecret=<secret>    (a Secret with ca.crt that admin clients must chain to)\n  --set adminInsecure=true                  (skip mTLS; token-only admin plane)\n" }}
+{{ fail "\n\nadminTLS.enabled provides a server cert but no client CA, and busbar's admin boot-guard requires mTLS (client_ca) on a network-exposed admin listener; a server cert alone is not enough.\n\nFix one of:\n  --set adminTLS.certManager.enabled=true   (cert-manager wires the issuing CA as the client CA automatically)\n  --set adminTLS.clientCASecret=<secret>    (a Secret with ca.crt that admin clients must chain to)\n" }}
 {{- end -}}
 {{- end -}}
 {{- end }}

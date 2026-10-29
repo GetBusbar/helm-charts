@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0
+
+- **appVersion 1.6.0.**
+- **BREAKING: `adminInsecure` is removed.** busbar 1.6.0 refuses `admin_insecure`, so the chart no
+  longer renders it. Exposing the admin plane (`service.admin.enabled=true`) now requires
+  `adminTLS.enabled=true`; the render fails otherwise. A values file that still sets `adminInsecure`
+  gets no waiver.
+- `helm unittest` suite (`charts/busbar/tests`) asserts the secure defaults: non-root, uid/gid
+  65532, `readOnlyRootFilesystem`, no privilege escalation, `drop: [ALL]`, and that
+  `admin_insecure` is never rendered.
+
 ## 0.2.8
 
 Chart 0.2.7 / appVersion 1.5.3 could not boot by any documented route. Three defects, all

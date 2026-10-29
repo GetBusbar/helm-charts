@@ -45,7 +45,7 @@ tests:
           path: data["config.yaml"]
           pattern: admin_insecure
   - it: refuses an exposed admin plane without mTLS (adminInsecure is no waiver)
-    template: configmap.yaml
+    template: deployment.yaml
     set:
       service.admin.enabled: true
       adminInsecure: true
