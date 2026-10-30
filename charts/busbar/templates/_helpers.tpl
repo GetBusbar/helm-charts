@@ -86,6 +86,11 @@ requires mTLS (adminTLS); busbar 1.6.0 has no insecure waiver. Fail the render e
 clear message so the user never ships an un-bootable deployment.
 */}}
 {{- define "busbar.validateAdmin" -}}
+{{- /* The admin server cert has exactly one source: cert-manager or an operator-named
+       Secret. Without either the pod would mount a Secret named "" and never start. */}}
+{{- if and .Values.adminTLS.enabled (not .Values.adminTLS.certManager.enabled) (not .Values.adminTLS.existingSecret) -}}
+{{ fail "\n\nadminTLS.enabled=true needs a server certificate, but neither adminTLS.certManager.enabled nor adminTLS.existingSecret is set.\n\nFix one of:\n  --set adminTLS.certManager.enabled=true --set adminTLS.certManager.issuerRef.name=<issuer>\n  --set adminTLS.existingSecret=<secret with tls.crt/tls.key>\n" }}
+{{- end -}}
 {{- if .Values.service.admin.enabled -}}
 {{- if not .Values.adminTLS.enabled -}}
 {{ fail "\n\nservice.admin.enabled=true exposes the admin plane on a non-loopback address (0.0.0.0:8081), which busbar's boot-guard REFUSES TO BOOT unless the admin listener requires mTLS (busbar 1.6.0 has no insecure waiver).\n\nFix:\n  --set adminTLS.enabled=true    (mTLS via cert-manager or an existing cert + client CA)\n\nOr leave service.admin.enabled=false (default) to keep the admin plane on loopback.\n" }}
