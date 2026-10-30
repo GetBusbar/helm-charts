@@ -1,6 +1,14 @@
 # CI: minimal bootable config for the default (stateless Deployment) path.
 # busbar 1.5.x syntax: secret references, a pool whose members use `model:`.
 # A dummy provider key satisfies the startup check; no upstream is called.
+
+# Install-test image pin. The chart's default tag follows appVersion (1.6.0),
+# right for a release, but that tag is not on Docker Hub until busbar 1.6.0
+# ships, so ct install would sit in ImagePullBackOff. Pin the newest published
+# 1.6.0 pre-release build (it reports `busbar 1.6.0`; boot-tested with this
+# values file). Drop this pin once getbusbar/busbar:1.6.0 is published.
+image:
+  tag: staging-c9f3d73efd25
 config:
   identity-providers:
     admin-tokens:

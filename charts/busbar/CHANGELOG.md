@@ -10,6 +10,13 @@
 - `helm unittest` suite (`charts/busbar/tests`) asserts the secure defaults: non-root, uid/gid
   65532, `readOnlyRootFilesystem`, no privilege escalation, `drop: [ALL]`, and that
   `admin_insecure` is never rendered.
+- `adminTLS.enabled=true` with neither `adminTLS.certManager.enabled` nor `adminTLS.existingSecret`
+  now fails the render instead of producing a pod that mounts a Secret named `""` and never
+  starts. A second unittest suite pins the admin TLS wiring: loopback by default with no cert,
+  the cert-manager `Certificate` writes the Secret the pod mounts, and an exposed admin plane
+  always gets a `client_ca`.
+- The `ci/*-values.yaml` install tests pin `image.tag` to a published 1.6.0 pre-release build,
+  because `getbusbar/busbar:1.6.0` is not on Docker Hub until busbar 1.6.0 ships.
 
 ## 0.2.8
 
