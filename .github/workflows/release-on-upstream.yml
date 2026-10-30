@@ -1,0 +1,149 @@
+# Publish a new busbar chart when core ships.
+#
+# On an upstream-release dispatch (or daily self-heal cron, or a manual run) this sets
+# charts/busbar's appVersion to the new busbar version and patch-bumps the chart's own
+# version, then pushes main via RELEASE_DISPATCH_TOKEN (bypass-capable; a plain
+# GITHUB_TOKEN push is rejected by branch protection). The chart-version change makes the
+# existing "Release Charts" workflow (push: main) package + publish the new chart, and
+# because the push is made with a PAT it does fire that workflow. No plain `push:` trigger
+# here, so merging this file cannot itself publish. Cron only acts when core's latest
+# release is newer than the committed appVersion, so an idle day is a no-op. bump_chart.py
+# only moves appVersion forward, so every path is idempotent.
+name: release-on-upstream
+
+on:
+  repository_dispatch:
+    types: [upstream-release]
+  schedule:
+    - cron: "19 7 * * *" # daily; minute staggered per repo so the fleet's crons don't all fire at once
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  # Serialize overlapping dispatch + cron so we never double-publish; never cancel mid-push.
+  group: release-on-upstream-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (bypass-capable token)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+          token: ${{ secrets.RELEASE_DISPATCH_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "busbar-bot"
+          git config user.email "bot@getbusbar.com"
+
+      - name: Resolve target busbar version and whether to act
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_DISPATCH_TOKEN }}
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          CHART=charts/busbar/Chart.yaml
+          committed="$(grep -E '^appVersion:' "$CHART" | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "committed appVersion: ${committed:-<none>}"
+          target=""
+          act=no
+          case "$EVENT_NAME" in
+            repository_dispatch)
+              # A real upstream release event: publish the version core told us about.
+              target="${DISPATCH_VERSION#v}"
+              act=yes
+              ;;
+            workflow_dispatch)
+              # Manual run always acts (bump_chart.py still no-ops if already current).
+              tag="$(gh api repos/GetBusbar/busbar/releases/latest --jq .tag_name 2>/dev/null || true)"
+              target="${tag#v}"
+              act=yes
+              ;;
+            schedule)
+              # Self-heal: only act when core's latest release is strictly newer than committed.
+              tag="$(gh api repos/GetBusbar/busbar/releases/latest --jq .tag_name 2>/dev/null || true)"
+              target="${tag#v}"
+              if [ -n "$target" ] && [ "$target" != "$committed" ] \
+                 && [ "$(printf '%s\n%s\n' "$committed" "$target" | sort -V | tail -1)" = "$target" ]; then
+                act=yes
+                echo "::notice::busbar advanced (${committed:-none} -> ${target}) -> publishing"
+              else
+                echo "::notice::no newer busbar release (committed=${committed:-none}, latest=${target:-none}) -> nothing to do"
+              fi
+              ;;
+          esac
+          if [ "$act" = yes ] && [ -z "$target" ]; then
+            echo "::error::could not resolve a target busbar version"
+            exit 1
+          fi
+          {
+            echo "act=$act"
+            echo "target=$target"
+          } >> "$GITHUB_OUTPUT"
+
+      # FAIL-CLOSED ON A MISSING IMAGE. Everything above this step trusts busbar's RELEASE OBJECT.
+      # The chart does not ship a release object, it ships an image reference: values.yaml has
+      # `tag: ""`, which _helpers.tpl resolves to Chart.yaml's appVersion. So bumping appVersion to a
+      # version whose container image has not been pushed publishes a chart that ImagePullBackOffs
+      # for every user who installs it.
+      #
+      # That is a real window, not a theoretical one: busbar's release.yml and docker.yml run in
+      # PARALLEL off the same tag push, so `releases/latest` can advance minutes before the image
+      # lands, and this workflow's `19 7 * * *` cron does not care what time of day that is. During
+      # the 1.5.3 release the window was open and nothing but timing kept a broken chart off
+      # ArtifactHub.
+      #
+      # The verifier reads the OCI Distribution API (what `docker pull` actually reads), not Docker
+      # Hub's tags index, which can lag hours behind a real push. Its self-test runs FIRST, the same
+      # "prove the gate before you trust its verdict" discipline core uses on every lint: a verifier
+      # that had rotted into always-passing would otherwise wave through exactly the broken publish
+      # it exists to prevent.
+      #
+      # On failure the chart simply stays where it is and the next cron retries, so this heals
+      # itself the moment the image appears. That is the same fail-closed-by-construction shape
+      # GetBusbar/homebrew-busbar gets for free by downloading its tarballs under `set -euo pipefail`.
+      - name: Verify the container image is pullable (self-test first)
+        if: steps.resolve.outputs.act == 'yes'
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/verify-image.sh
+          .github/scripts/verify-image.sh --selftest
+          # Read the repository from values.yaml rather than hardcoding it, so a chart that
+          # re-points at another registry path cannot leave this check silently verifying the old
+          # one. The tag is the appVersion we are about to write, which is what the chart will
+          # resolve at install time.
+          repo="$(python3 -c "import re,sys; print(re.search(r'^\s*repository:\s*(\S+)', open('charts/busbar/values.yaml').read(), re.M).group(1))")"
+          echo "chart will reference ${repo}:${TARGET}"
+          .github/scripts/verify-image.sh "$repo" "$TARGET" 10 30
+
+      - name: Bump chart appVersion + version to target
+        if: steps.resolve.outputs.act == 'yes'
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/bump_chart.py charts/busbar/Chart.yaml "$TARGET"
+
+      - name: Commit and push (fires Release Charts)
+        if: steps.resolve.outputs.act == 'yes'
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "::notice::chart already at busbar ${TARGET} — idempotent no-op"
+            exit 0
+          fi
+          git add charts/busbar/Chart.yaml
+          git commit -m "release: publish busbar ${TARGET} (chart appVersion + version bump)"
+          git push origin HEAD:main

@@ -1,0 +1,116 @@
+suite: admin TLS wiring
+# The admin plane stays on loopback by default and needs no certificate. Exposing it
+# (service.admin.enabled) requires mTLS, and the server cert comes from exactly one
+# place: a cert-manager Certificate the chart creates, or a Secret the operator names.
+# The chart never mints its own cert (genSelfSignedCert): a chart-generated client CA
+# would be re-rolled on every upgrade and its key would live in a release Secret,
+# which is neither secure nor something an operator can hand to admin clients.
+templates:
+  - deployment.yaml
+  - configmap.yaml
+  - secret.yaml
+  - certificate.yaml
+values:
+  - ../ci/default-values.yaml
+capabilities:
+  apiVersions:
+    - cert-manager.io/v1
+tests:
+  - it: default keeps the admin plane on loopback and mounts no admin cert
+    template: deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: admin-tls
+          any: true
+  - it: default renders no admin_tls block and a loopback admin_listen
+    template: configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'admin_listen: "127\.0\.0\.1:8081"'
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: admin_tls
+  - it: cert-manager path mounts exactly the Secret the Certificate writes
+    template: deployment.yaml
+    set:
+      service.admin.enabled: true
+      adminTLS.enabled: true
+      adminTLS.certManager.enabled: true
+      adminTLS.certManager.issuerRef.name: busbar-ca
+      adminTLS.certManager.issuerRef.kind: ClusterIssuer
+    release:
+      name: rel
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: admin-tls
+            secret:
+              secretName: rel-busbar-admin-tls
+  - it: cert-manager Certificate writes the Secret the pod mounts
+    template: certificate.yaml
+    set:
+      service.admin.enabled: true
+      adminTLS.enabled: true
+      adminTLS.certManager.enabled: true
+      adminTLS.certManager.issuerRef.name: busbar-ca
+      adminTLS.certManager.issuerRef.kind: ClusterIssuer
+    release:
+      name: rel
+    asserts:
+      - equal:
+          path: spec.secretName
+          value: rel-busbar-admin-tls
+  - it: cert-manager path requires mTLS (client_ca) on the exposed admin listener
+    template: configmap.yaml
+    set:
+      service.admin.enabled: true
+      adminTLS.enabled: true
+      adminTLS.certManager.enabled: true
+      adminTLS.certManager.issuerRef.name: busbar-ca
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'admin_listen: "0\.0\.0\.0:8081"'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'client_ca:\s+file: /etc/busbar/tls/admin/ca\.crt'
+  - it: existing-Secret path mounts the named cert and client CA
+    template: deployment.yaml
+    set:
+      service.admin.enabled: true
+      adminTLS.enabled: true
+      adminTLS.existingSecret: my-admin-cert
+      adminTLS.clientCASecret: my-admin-ca
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: admin-tls
+            secret:
+              secretName: my-admin-cert
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: admin-ca
+            secret:
+              secretName: my-admin-ca
+  - it: refuses adminTLS without a cert source (no empty secretName)
+    template: deployment.yaml
+    set:
+      adminTLS.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: adminTLS.existingSecret
+  - it: refuses an exposed admin plane with a server cert but no client CA
+    template: deployment.yaml
+    set:
+      service.admin.enabled: true
+      adminTLS.enabled: true
+      adminTLS.existingSecret: my-admin-cert
+    asserts:
+      - failedTemplate:
+          errorPattern: client CA

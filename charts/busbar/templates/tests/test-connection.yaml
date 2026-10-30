@@ -28,6 +28,17 @@ spec:
         - "--fail"
         - "--show-error"
         - "--silent"
+        # `helm test` can fire before the Service endpoint has propagated, which
+        # fails instantly with "Could not connect to server". Retry rather than
+        # report a healthy gateway as broken.
+        - "--retry"
+        - "10"
+        - "--retry-delay"
+        - "2"
+        - "--retry-connrefused"
+        - "--retry-all-errors"
+        - "--max-time"
+        - "60"
         - "{{ if .Values.dataTLS.enabled }}https{{ else }}http{{ end }}://{{ include "busbar.fullname" . }}-data:{{ .Values.service.data.port }}/healthz"
         {{- if .Values.dataTLS.enabled }}
         - "--insecure"
