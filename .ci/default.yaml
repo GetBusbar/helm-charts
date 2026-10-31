@@ -3,8 +3,7 @@
 to: dev
 on:
   move: [lint-test]
-  push: [lint-test]
-  landed: [lint-test]
+  manual: [lint-test]
 checks:
   lint-test:
     run: |
