@@ -1,0 +1,13 @@
+# Version updates are monthly and grouped into one PR per ecosystem.
+# Security updates are separate and run whenever an advisory is published.
+version: 2
+updates:
+- package-ecosystem: github-actions
+  directory: /
+  target-branch: dev
+  schedule:
+    interval: monthly
+  groups:
+    all:
+      patterns:
+      - '*'
