@@ -63,16 +63,18 @@ jobs:
               ;;
             workflow_dispatch)
               # Manual run always acts (bump_chart.py still no-ops if already current).
-              tag="$(gh api repos/GetBusbar/busbar/releases/latest --jq .tag_name 2>/dev/null || true)"
+              tag="$(gh api repos/GetBusbar/busbar/releases/latest --jq .tag_name)"
               target="${tag#v}"
               act=yes
               ;;
             schedule)
               # Self-heal: only act when core's latest release is strictly newer than committed.
-              tag="$(gh api repos/GetBusbar/busbar/releases/latest --jq .tag_name 2>/dev/null || true)"
+              tag="$(gh api repos/GetBusbar/busbar/releases/latest --jq .tag_name)"
               target="${tag#v}"
-              if [ -n "$target" ] && [ "$target" != "$committed" ] \
-                 && [ "$(printf '%s\n%s\n' "$committed" "$target" | sort -V | tail -1)" = "$target" ]; then
+              python3 .github/scripts/bump_chart.py --validate "$committed"
+              python3 .github/scripts/bump_chart.py --validate "$target"
+              if [ "$target" != "$committed" ] \
+                 && python3 .github/scripts/bump_chart.py --is-newer "$committed" "$target"; then
                 act=yes
                 echo "::notice::busbar advanced (${committed:-none} -> ${target}) -> publishing"
               else
@@ -83,6 +85,9 @@ jobs:
           if [ "$act" = yes ] && [ -z "$target" ]; then
             echo "::error::could not resolve a target busbar version"
             exit 1
+          fi
+          if [ "$act" = yes ]; then
+            python3 .github/scripts/bump_chart.py --validate "$target"
           fi
           {
             echo "act=$act"

@@ -20,11 +20,36 @@ import sys
 
 
 def parse_semver(s):
-    m = re.match(r"^([0-9]+)\.([0-9]+)\.([0-9]+)", s)
+    m = re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+        r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
+        r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
+        s,
+    )
     if not m:
-        sys.exit(f"not a semver-ish version: {s!r}")
-    return tuple(int(x) for x in m.groups())
+        sys.exit(f"not a semantic version: {s!r}")
+    core = tuple(int(x) for x in m.groups()[:3])
+    prerelease = m.group(4)
+    if prerelease is None:
+        return core + (1, ())
+    identifiers = []
+    for identifier in prerelease.split("."):
+        if identifier.isdigit():
+            if len(identifier) > 1 and identifier.startswith("0"):
+                sys.exit(f"numeric prerelease identifier has a leading zero: {s!r}")
+            identifiers.append((0, int(identifier)))
+        else:
+            identifiers.append((1, identifier))
+    return core + (0, tuple(identifiers))
 
+
+if len(sys.argv) == 3 and sys.argv[1] == "--validate":
+    parse_semver(sys.argv[2])
+    sys.exit(0)
+if len(sys.argv) == 4 and sys.argv[1] == "--is-newer":
+    sys.exit(0 if parse_semver(sys.argv[3]) > parse_semver(sys.argv[2]) else 1)
+if len(sys.argv) != 3:
+    sys.exit("usage: bump_chart.py <Chart.yaml> <version> | --validate <version> | --is-newer <current> <candidate>")
 
 path, candidate_app_version = sys.argv[1], sys.argv[2]
 with open(path) as f:
