@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.3.1
+
+- Empty admin namespace allowlists now deny admin ingress instead of allowing every source.
+- Governance adds its admin identity provider beside existing data providers and validates only chart-generated credentials and stores.
+- Reject duplicate chart-managed listener/TLS config and missing data TLS Secrets at render time.
+- Existing ConfigMaps can explicitly supply a provider catalog with `existingConfigMapHasProviders: true`.
+- Service names reserve space for suffixes without renaming workloads.
+- Correct admin access and ConfigMap reload instructions.
+- Release automation respects SemVer prerelease precedence, rejects malformed versions and surfaces upstream API failures.
+- Health-test pods no longer receive an unused Kubernetes API credential.
+- Run chart regression and release-script tests in CI.
+
+## 0.3.0
+
+- **appVersion 1.6.0.**
+- **BREAKING: `adminInsecure` is removed.** busbar 1.6.0 refuses `admin_insecure`, so the chart no
+  longer renders it. Exposing the admin plane (`service.admin.enabled=true`) now requires
+  `adminTLS.enabled=true`; the render fails otherwise. A values file that still sets `adminInsecure`
+  gets no waiver.
+- `helm unittest` suite (`charts/busbar/tests`) asserts the secure defaults: non-root, uid/gid
+  65532, `readOnlyRootFilesystem`, no privilege escalation, `drop: [ALL]`, and that
+  `admin_insecure` is never rendered.
+- `adminTLS.enabled=true` with neither `adminTLS.certManager.enabled` nor `adminTLS.existingSecret`
+  now fails the render instead of producing a pod that mounts a Secret named `""` and never
+  starts. A second unittest suite pins the admin TLS wiring: loopback by default with no cert,
+  the cert-manager `Certificate` writes the Secret the pod mounts, and an exposed admin plane
+  always gets a `client_ca`.
+- The `ci/*-values.yaml` install tests pin `image.tag` to a published 1.6.0 pre-release build,
+  because `getbusbar/busbar:1.6.0` is not on Docker Hub until busbar 1.6.0 ships.
+
 ## 0.2.8
 
 Chart 0.2.7 / appVersion 1.5.3 could not boot by any documented route. Three defects, all

@@ -2,7 +2,7 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "busbar.fullname" . }}-admin
+  name: {{ include "busbar.serviceName" (dict "root" . "suffix" "-admin") }}
   labels:
     {{- include "busbar.labels" . | nindent 4 }}
 spec:
@@ -12,6 +12,7 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    {{- if .Values.networkPolicy.admin.allowedNamespaces }}
     # Restrict admin plane (8081) to the allowed namespaces only.
     - from:
         {{- range .Values.networkPolicy.admin.allowedNamespaces }}
@@ -22,6 +23,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8081
+    {{- end }}
     # Data plane (8080) stays open to all sources.
     - ports:
         - protocol: TCP

@@ -10,7 +10,7 @@ busbar runs **two listeners**:
 - **Admin plane** (`admin_listen`, default loopback `127.0.0.1:8081`) — the runtime admin API.
 
 busbar has a **boot-guard**: a non-loopback `admin_listen` *refuses to boot* unless it requires
-mTLS (`admin_tls` with a client CA) **or** `admin_insecure: true` is set. This chart honors that
+mTLS (`admin_tls` with a client CA); 1.6.0 has no insecure waiver. This chart honors that
 guard — see [Admin plane](#admin-plane) below.
 
 ## Installing
@@ -94,17 +94,20 @@ will diverge**. Use `overlay` at `replicaCount: 1`, or point `overlayFile` at du
 every replica mounts read-write.
 
 Anything you set under `.Values.config.config` wins over the chart's value in every mode.
+ConfigMap files use `subPath` mounts: when `reloadOnConfigChange=false`, roll the pods after changing
+the ConfigMap; `/config/reload` alone cannot see updated ConfigMap files.
 
 ## Admin plane
 
 The admin plane is **not exposed** by default. To reach it cluster-wide, set
 `service.admin.enabled=true` — which binds `admin_listen: 0.0.0.0:8081`. Because of the boot-guard
-you must ALSO enable one of:
+you must ALSO enable `adminTLS.enabled=true` (mTLS, ideally via cert-manager). There is no
+insecure waiver.
 
-- `adminTLS.enabled=true` (recommended — mTLS, ideally via cert-manager), or
-- `adminInsecure=true` (insecure waiver; pair with a `NetworkPolicy`).
+If you enable the admin Service without it, the chart **fails the render** with a clear message.
 
-If you enable the admin Service without either, the chart **fails the render** with a clear message.
+When `networkPolicy.enabled=true`, an empty `networkPolicy.admin.allowedNamespaces` list denies
+admin ingress; add namespace names to allow those sources. Data-plane ingress remains open.
 
 ## Governance
 
@@ -251,6 +254,7 @@ networkPolicy:
 | `configMutability.overlayFile` | Overlay backend path, `overlay` mode only. Pod-local and ephemeral by default | `/tmp/busbar-overlay.json` |
 | `providersCatalog` | Optional map rendered to `providers.yaml` (else the image's catalog is used) | `{}` |
 | `existingConfigMap` | Use an existing ConfigMap instead of rendering config | `""` |
+| `existingConfigMapHasProviders` | Mount the existing ConfigMap's `providers.yaml` key; nonempty `providersCatalog` also selects this key for compatibility | `false` |
 | `secrets.create` | Create a Secret from `secrets.data` | `true` |
 | `secrets.existingSecret` | Use an existing Secret | `""` |
 | `secrets.data` | Key/value secret data injected as env vars | `{}` |
@@ -273,7 +277,6 @@ networkPolicy:
 | `adminTLS.certManager.issuerRef.kind` | cert-manager issuer kind | `Issuer` |
 | `adminTLS.existingSecret` | Existing admin server cert Secret | `""` |
 | `adminTLS.clientCASecret` | Secret with client CA bundle (`ca.crt`) for mTLS | `""` |
-| `adminInsecure` | Non-loopback admin bind without mTLS (insecure waiver) | `false` |
 | `dataTLS.enabled` | Terminate TLS on the data listener | `false` |
 | `dataTLS.existingSecret` | Existing data TLS cert Secret | `""` |
 | `ingress.enabled` | Create a data-plane Ingress | `false` |

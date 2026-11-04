@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "busbar.fullname" . }}-admin
+  name: {{ include "busbar.serviceName" (dict "root" . "suffix" "-admin") }}
   labels:
     {{- include "busbar.labels" . | nindent 4 }}
     app.kubernetes.io/component: admin

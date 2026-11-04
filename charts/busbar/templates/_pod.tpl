@@ -39,7 +39,7 @@ spec:
       env:
         - name: BUSBAR_CONFIG
           value: /etc/busbar/config.yaml
-        {{- if or .Values.providersCatalog .Values.existingConfigMap }}
+        {{- if or .Values.providersCatalog (and .Values.existingConfigMap .Values.existingConfigMapHasProviders) }}
         - name: BUSBAR_PROVIDERS
           value: /etc/busbar/providers.yaml
         {{- end }}
@@ -87,7 +87,7 @@ spec:
           mountPath: /etc/busbar/config.yaml
           subPath: config.yaml
           readOnly: true
-        {{- if .Values.providersCatalog }}
+        {{- if or .Values.providersCatalog (and .Values.existingConfigMap .Values.existingConfigMapHasProviders) }}
         - name: config
           mountPath: /etc/busbar/providers.yaml
           subPath: providers.yaml
@@ -123,7 +123,7 @@ spec:
     {{- if .Values.adminTLS.enabled }}
     - name: admin-tls
       secret:
-        secretName: {{ if .Values.adminTLS.certManager.enabled }}{{ include "busbar.fullname" . }}-admin-tls{{ else }}{{ .Values.adminTLS.existingSecret }}{{ end }}
+        secretName: {{ if .Values.adminTLS.certManager.enabled }}{{ include "busbar.serviceName" (dict "root" . "suffix" "-admin") }}-tls{{ else }}{{ .Values.adminTLS.existingSecret }}{{ end }}
     {{- if .Values.adminTLS.clientCASecret }}
     - name: admin-ca
       secret:

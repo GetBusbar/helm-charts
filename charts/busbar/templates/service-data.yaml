@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "busbar.fullname" . }}-data
+  name: {{ include "busbar.serviceName" (dict "root" . "suffix" "-data") }}
   labels:
     {{- include "busbar.labels" . | nindent 4 }}
   {{- with .Values.service.data.annotations }}

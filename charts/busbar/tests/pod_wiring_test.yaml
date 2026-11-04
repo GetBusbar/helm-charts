@@ -1,0 +1,61 @@
+suite: pod config and resource names
+templates: [deployment.yaml, service-data.yaml, service-headless.yaml, configmap.yaml, secret.yaml, statefulset.yaml]
+values: [../ci/default-values.yaml]
+tests:
+  - it: mounts an explicitly requested existing provider catalog
+    template: deployment.yaml
+    set:
+      existingConfigMap: external
+      existingConfigMapHasProviders: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: config
+            mountPath: /etc/busbar/providers.yaml
+            subPath: providers.yaml
+            readOnly: true
+  - it: preserves image catalog when external map contains config only
+    template: deployment.yaml
+    set:
+      existingConfigMap: external
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            mountPath: /etc/busbar/providers.yaml
+          any: true
+  - it: reserves suffix space in Service names
+    template: service-data.yaml
+    set:
+      fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - matchRegex:
+          path: metadata.name
+          pattern: '^.{1,63}$'
+  - it: keeps the workload name while using the shortened headless Service name
+    template: statefulset.yaml
+    set:
+      fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      governance.enabled: true
+    asserts:
+      - equal:
+          path: metadata.name
+          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      - equal:
+          path: spec.serviceName
+          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-headless
+  - it: preserves legacy external-catalog selection through providersCatalog
+    template: deployment.yaml
+    set:
+      existingConfigMap: external
+      existingConfigMapHasProviders: false
+      providersCatalog.example.endpoint: https://example.invalid
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: config
+            mountPath: /etc/busbar/providers.yaml
+            subPath: providers.yaml
+            readOnly: true
