@@ -48,6 +48,7 @@
     },
     "providersCatalog": { "type": "object" },
     "existingConfigMap": { "type": "string" },
+    "existingConfigMapHasProviders": { "type": "boolean" },
     "secrets": {
       "type": "object",
       "additionalProperties": false,
@@ -130,7 +131,6 @@
         "clientCASecret": { "type": "string" }
       }
     },
-    "adminInsecure": { "type": "boolean" },
     "dataTLS": {
       "type": "object",
       "additionalProperties": false,

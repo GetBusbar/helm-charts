@@ -1,6 +1,14 @@
 # CI: configMutability.mode=overlay -- admin-API config mutation re-enabled with
 # the overlay backend on the chart's writable /tmp emptyDir. Single replica,
 # because a pod-local overlay diverges across replicas.
+
+# Install-test image pin. The chart's default tag follows appVersion (1.6.0),
+# right for a release, but that tag is not on Docker Hub until busbar 1.6.0
+# ships, so ct install would sit in ImagePullBackOff. Pin the newest published
+# 1.6.0 pre-release build (it reports `busbar 1.6.0`; boot-tested with this
+# values file). Drop this pin once getbusbar/busbar:1.6.0 is published.
+image:
+  tag: staging-c9f3d73efd25
 replicaCount: 1
 configMutability:
   mode: overlay

@@ -82,18 +82,23 @@ admin Service is enabled we bind 0.0.0.0 so it is reachable in-cluster.
 
 {{/*
 Boot-guard enforcement: a non-loopback admin_listen refuses to boot unless it
-requires mTLS (adminTLS) or adminInsecure is set. Fail the render early with a
+requires mTLS (adminTLS); busbar 1.6.0 has no insecure waiver. Fail the render early with a
 clear message so the user never ships an un-bootable deployment.
 */}}
 {{- define "busbar.validateAdmin" -}}
+{{- /* The admin server cert has exactly one source: cert-manager or an operator-named
+       Secret. Without either the pod would mount a Secret named "" and never start. */}}
+{{- if and .Values.adminTLS.enabled (not .Values.adminTLS.certManager.enabled) (not .Values.adminTLS.existingSecret) -}}
+{{ fail "\n\nadminTLS.enabled=true needs a server certificate, but neither adminTLS.certManager.enabled nor adminTLS.existingSecret is set.\n\nFix one of:\n  --set adminTLS.certManager.enabled=true --set adminTLS.certManager.issuerRef.name=<issuer>\n  --set adminTLS.existingSecret=<secret with tls.crt/tls.key>\n" }}
+{{- end -}}
 {{- if .Values.service.admin.enabled -}}
-{{- if and (not .Values.adminTLS.enabled) (not .Values.adminInsecure) -}}
-{{ fail "\n\nservice.admin.enabled=true exposes the admin plane on a non-loopback address (0.0.0.0:8081), which busbar's boot-guard REFUSES TO BOOT unless the admin listener requires mTLS or an explicit insecure waiver is set.\n\nFix one of:\n  --set adminTLS.enabled=true    (recommended: mTLS via cert-manager or an existing cert + client CA)\n  --set adminInsecure=true       (insecure waiver; only in a trusted, network-policied namespace)\n\nOr leave service.admin.enabled=false (default) to keep the admin plane on loopback.\n" }}
+{{- if not .Values.adminTLS.enabled -}}
+{{ fail "\n\nservice.admin.enabled=true exposes the admin plane on a non-loopback address (0.0.0.0:8081), which busbar's boot-guard REFUSES TO BOOT unless the admin listener requires mTLS (busbar 1.6.0 has no insecure waiver).\n\nFix:\n  --set adminTLS.enabled=true    (mTLS via cert-manager or an existing cert + client CA)\n\nOr leave service.admin.enabled=false (default) to keep the admin plane on loopback.\n" }}
 {{- end -}}
 {{- /* mTLS needs a client CA, not just a server cert. cert-manager wires the issuing CA
        automatically; with an existingSecret the operator must supply a client CA. */}}
 {{- if and .Values.adminTLS.enabled (not .Values.adminTLS.certManager.enabled) (not .Values.adminTLS.clientCASecret) -}}
-{{ fail "\n\nadminTLS.enabled provides a server cert but no client CA, and busbar's admin boot-guard requires mTLS (client_ca) on a network-exposed admin listener; a server cert alone is not enough.\n\nFix one of:\n  --set adminTLS.certManager.enabled=true   (cert-manager wires the issuing CA as the client CA automatically)\n  --set adminTLS.clientCASecret=<secret>    (a Secret with ca.crt that admin clients must chain to)\n  --set adminInsecure=true                  (skip mTLS; token-only admin plane)\n" }}
+{{ fail "\n\nadminTLS.enabled provides a server cert but no client CA, and busbar's admin boot-guard requires mTLS (client_ca) on a network-exposed admin listener; a server cert alone is not enough.\n\nFix one of:\n  --set adminTLS.certManager.enabled=true   (cert-manager wires the issuing CA as the client CA automatically)\n  --set adminTLS.clientCASecret=<secret>    (a Secret with ca.crt that admin clients must chain to)\n" }}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -111,13 +116,24 @@ wiring plugins yourself is an exit-1 config.
 */}}
 {{- define "busbar.validateGovernance" -}}
 {{- if .Values.governance.enabled -}}
+{{- $cfg := .Values.config | default dict -}}
+{{- $auth := $cfg.auth | default dict -}}
+{{- $providers := index $cfg "identity-providers" | default dict -}}
+{{- if and (not .Values.existingConfigMap) (not (hasKey $auth "admin_auth")) (not (hasKey $providers "admin-tokens")) -}}
 {{- if not .Values.secrets.existingSecret -}}
+{{- if not .Values.secrets.create -}}
+{{- fail "governance admin token requires secrets.create=true or secrets.existingSecret" -}}
+{{- end -}}
+{{- if not (index (default dict .Values.secrets.data) .Values.governance.adminTokenEnv) -}}
+{{- fail "governance admin token must be non-empty in secrets.data (or use secrets.existingSecret)" -}}
+{{- end -}}
 {{- if not (hasKey (default dict .Values.secrets.data) .Values.governance.adminTokenEnv) -}}
 {{ fail (printf "\n\ngovernance.enabled=true requires an admin token, but secrets.data has no %q key. busbar refuses to gate its admin plane without one.\n\nFix: add the token to the Secret, e.g.\n  --set secrets.data.%s=<a-long-random-token>\nor set governance.adminTokenEnv to a key you already provide (or use an existingSecret that contains it).\n" .Values.governance.adminTokenEnv .Values.governance.adminTokenEnv) }}
 {{- end -}}
 {{- end -}}
+{{- end -}}
 {{- $storeModule := .Values.governance.store.module | default "memory" -}}
-{{- if ne $storeModule "memory" -}}
+{{- if and (not .Values.existingConfigMap) (not (hasKey $cfg "store")) (ne $storeModule "memory") -}}
 {{- $plugins := (default dict .Values.config).plugins | default dict -}}
 {{- if not $plugins.enabled -}}
 {{ fail (printf "\n\ngovernance.store.module=%q is a store PLUGIN, but config.plugins.enabled is not true, so busbar would exit 1 at boot:\n  [error] store.module: %q requires the plugin subsystem, but plugins.enabled is false (the default).\n\nEvery durable store in busbar 1.5.x is a signed store plugin, and the getbusbar/busbar:1.5.3 image ships no plugin tarballs (`busbar --list-plugins` prints \"no plugin tarballs found\"), so the chart cannot supply one for you.\n\nFix one of:\n  --set governance.store.module=memory   (ephemeral: keys, group usage and ledgers reset on restart)\n  mount the signed %q store plugin into the pod and set config.plugins.enabled=true plus config.plugins.dir to that path\n" $storeModule $storeModule $storeModule) }}
@@ -136,9 +152,28 @@ credentials for an upstream nobody configured), so fail the render with the
 config the user actually needs instead of shipping a CrashLoopBackOff.
 */}}
 {{- define "busbar.validateConfig" -}}
+{{- if and .Values.dataTLS.enabled (not .Values.dataTLS.existingSecret) -}}
+{{- fail "dataTLS.enabled=true requires dataTLS.existingSecret" -}}
+{{- end -}}
+{{- if not .Values.existingConfigMap -}}
+{{- $managed := list "listen" "admin_listen" -}}
+{{- if .Values.adminTLS.enabled -}}{{- $managed = append $managed "admin_tls" -}}{{- end -}}
+{{- if .Values.dataTLS.enabled -}}{{- $managed = append $managed "tls" -}}{{- end -}}
+{{- range $key := $managed -}}
+{{- if hasKey $.Values.config $key -}}
+{{- fail (printf "config.%s is chart-managed; configure service/adminTLS/dataTLS values instead" $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- if not .Values.existingConfigMap -}}
 {{- if not .Values.config -}}
 {{ fail "\n\n`config` is REQUIRED and is empty.\n\nbusbar is a gateway in front of upstream LLM providers: with no `providers` map it exits 1 at boot with\n  [error] config.yaml: invalid YAML: missing field `providers`\nso there is no bootable zero-config default and the chart refuses to render one.\n\nSupply a busbar 1.5.x config, e.g. in a values file:\n\n  secrets:\n    data:\n      ANTHROPIC_KEY: sk-ant-...\n      BUSBAR_ADMIN_TOKEN: a-long-random-admin-token\n  config:\n    identity-providers:\n      admin-tokens:\n        module: admin-tokens\n        token: { env: BUSBAR_ADMIN_TOKEN }\n    auth:\n      chain: []\n      admin_auth: [admin-tokens]\n    providers:\n      anthropic:\n        api_key: { env: ANTHROPIC_KEY }\n    models:\n      claude:\n        provider: anthropic\n    pools:\n      default:\n        members:\n          - model: claude\n\nNote `auth.chain: []` is an OPEN RELAY and is for a first boot only; set a real\nauth chain before you expose the data plane.\n\nOr point the chart at a config you already manage with `existingConfigMap`.\n" }}
 {{- end -}}
 {{- end -}}
 {{- end }}
+
+{{/* Reserve suffix space without changing existing workload names. */}}
+{{- define "busbar.serviceName" -}}
+{{- $limit := int (sub 63 (len .suffix)) -}}
+{{- printf "%s%s" (include "busbar.fullname" .root | trunc $limit | trimSuffix "-") .suffix -}}
+{{- end -}}

@@ -29,7 +29,7 @@ spec:
             pathType: {{ .pathType | default "Prefix" }}
             backend:
               service:
-                name: {{ $fullName }}-data
+                name: {{ include "busbar.serviceName" (dict "root" $ "suffix" "-data") }}
                 port:
                   number: {{ $svcPort }}
           {{- end }}

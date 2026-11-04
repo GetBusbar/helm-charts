@@ -1,5 +1,13 @@
 # CI: governance path -- StatefulSet + PVC, requires an admin token. The store
 # stays on `memory` because busbar 1.5.3's image ships no signed store plugin.
+
+# Install-test image pin. The chart's default tag follows appVersion (1.6.0),
+# right for a release, but that tag is not on Docker Hub until busbar 1.6.0
+# ships, so ct install would sit in ImagePullBackOff. Pin the newest published
+# 1.6.0 pre-release build (it reports `busbar 1.6.0`; boot-tested with this
+# values file). Drop this pin once getbusbar/busbar:1.6.0 is published.
+image:
+  tag: staging-c9f3d73efd25
 config:
   auth:
     chain: []

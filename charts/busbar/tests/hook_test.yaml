@@ -1,0 +1,9 @@
+suite: health hook isolation
+templates: [tests/test-connection.yaml]
+values: [../ci/default-values.yaml]
+tests:
+  - it: does not mount an unused Kubernetes API credential
+    asserts:
+      - equal:
+          path: spec.automountServiceAccountToken
+          value: false

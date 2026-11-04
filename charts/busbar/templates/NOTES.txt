@@ -20,12 +20,12 @@ WORKLOAD
 
 DATA PLANE (public LLM proxy, port 8080)
 ----------------------------------------
-  Service: {{ include "busbar.fullname" . }}-data ({{ .Values.service.data.type }}) on port {{ .Values.service.data.port }}
+  Service: {{ include "busbar.serviceName" (dict "root" . "suffix" "-data") }} ({{ .Values.service.data.type }}) on port {{ .Values.service.data.port }}
 
   Reach it from inside the cluster:
-    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "busbar.fullname" . }}-data {{ .Values.service.data.port }}:{{ .Values.service.data.port }}
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "busbar.serviceName" (dict "root" . "suffix" "-data") }} {{ .Values.service.data.port }}:{{ .Values.service.data.port }}
     curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/healthz    # unauthenticated health
-    curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/metrics     # Prometheus metrics
+    curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/metrics     # only if config.export configures a Prometheus exporter
     curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/stats       # runtime stats
 
 {{- if .Values.ingress.enabled }}
@@ -39,31 +39,36 @@ DATA PLANE (public LLM proxy, port 8080)
 ADMIN PLANE (port 8081)
 -----------------------
 {{- if .Values.service.admin.enabled }}
-  The admin plane is EXPOSED via Service {{ include "busbar.fullname" . }}-admin (bound 0.0.0.0:8081).
+  The admin plane is EXPOSED via Service {{ include "busbar.serviceName" (dict "root" . "suffix" "-admin") }} (bound 0.0.0.0:8081).
   {{- if .Values.adminTLS.enabled }}
   It requires mTLS. Present a client cert chaining to your client CA and an
   admin token (x-admin-token / Bearer) to reach /api/v1/admin/*.
-  {{- else if .Values.adminInsecure }}
-  WARNING: admin_insecure=true -> the admin plane accepts plaintext admin
-  traffic with NO mTLS. Restrict it with a NetworkPolicy (networkPolicy.enabled).
   {{- end }}
 
-  Health probe (unauthenticated, bypasses auth on the admin port too):
-    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "busbar.fullname" . }}-admin 8081:8081
-    curl http{{ if .Values.adminTLS.enabled }}s{{ end }}://127.0.0.1:8081/healthz
+  Port-forward the admin Service to a local port:
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "busbar.serviceName" (dict "root" . "suffix" "-admin") }} 8081:{{ .Values.service.admin.port }}
+  HTTPS health checks require a client certificate and key even though /healthz
+  does not require an admin token. Use your server CA bundle and a hostname in
+  the server certificate (for cert-manager, the Service DNS name):
+    curl --cacert server-ca.crt --cert client.crt --key client.key \
+      --resolve {{ include "busbar.serviceName" (dict "root" . "suffix" "-admin") }}:8081:127.0.0.1 \
+      https://{{ include "busbar.serviceName" (dict "root" . "suffix" "-admin") }}:8081/healthz
 {{- else }}
   The admin plane is NOT exposed. It stays on loopback (127.0.0.1:8081) inside
-  the pod, so the gateway always satisfies its admin boot-guard and boots.
+  the pod.
 
-  To administer the gateway, port-forward into the pod's loopback:
-    kubectl -n {{ .Release.Namespace }} exec -it deploy/{{ include "busbar.fullname" . }} -- \
-      curl http://127.0.0.1:8081/healthz
+  Forward the pod's admin port to your workstation (the image has no curl):
+    kubectl -n {{ .Release.Namespace }} port-forward {{ if .Values.governance.enabled }}statefulset{{ else }}deployment{{ end }}/{{ include "busbar.fullname" . }} 8081:8081
+{{- if .Values.adminTLS.enabled }}
+  Use HTTPS with the server CA and any required client certificate and key.
+{{- else }}
+    curl http://127.0.0.1:8081/healthz
+{{- end }}
 
   To EXPOSE the admin plane cluster-wide, set service.admin.enabled=true. Because
   busbar refuses to boot with a non-loopback admin listener that lacks mTLS, you
-  must ALSO enable one of:
-    --set adminTLS.enabled=true      (recommended: mTLS)
-    --set adminInsecure=true         (insecure waiver; pair with a NetworkPolicy)
+  must ALSO enable mTLS:
+    --set adminTLS.enabled=true
 {{- end }}
 
 CONFIG MUTABILITY

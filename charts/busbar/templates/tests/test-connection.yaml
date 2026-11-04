@@ -8,6 +8,7 @@ metadata:
     "helm.sh/hook": test
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
+  automountServiceAccountToken: false
   restartPolicy: Never
   securityContext:
     runAsNonRoot: true
@@ -39,7 +40,7 @@ spec:
         - "--retry-all-errors"
         - "--max-time"
         - "60"
-        - "{{ if .Values.dataTLS.enabled }}https{{ else }}http{{ end }}://{{ include "busbar.fullname" . }}-data:{{ .Values.service.data.port }}/healthz"
+        - "{{ if .Values.dataTLS.enabled }}https{{ else }}http{{ end }}://{{ include "busbar.serviceName" (dict "root" . "suffix" "-data") }}:{{ .Values.service.data.port }}/healthz"
         {{- if .Values.dataTLS.enabled }}
         - "--insecure"
         {{- end }}

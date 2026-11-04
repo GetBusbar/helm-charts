@@ -1,0 +1,95 @@
+suite: config wiring guards
+templates: [configmap.yaml]
+values: [../ci/governance-values.yaml]
+tests:
+  - it: adds admin tokens alongside unrelated identity providers
+    set:
+      config.identity-providers:
+        client-keys:
+          module: keys
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'admin-tokens:\s+module: admin-tokens'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'client-keys:\s+module: keys'
+  - it: rejects governance tokens that will not be injected
+    set:
+      secrets.create: false
+    asserts:
+      - failedTemplate:
+          errorPattern: secrets.create
+  - it: rejects an empty governance token
+    set:
+      secrets.data.BUSBAR_ADMIN_TOKEN: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: non-empty
+  - it: rejects duplicate chart-managed listeners
+    set:
+      config.listen: "127.0.0.1:9999"
+    asserts:
+      - failedTemplate:
+          errorPattern: chart-managed
+  - it: rejects data TLS without a Secret
+    set:
+      dataTLS.enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: dataTLS.existingSecret
+  - it: preserves an explicit admin chain without requiring a generated token
+    set:
+      secrets.create: false
+      config.auth.admin_auth: [custom]
+      config.identity-providers.custom:
+        module: admin-tokens
+        token: {env: CUSTOM_TOKEN}
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'admin_auth:\s+- custom'
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: 'env: BUSBAR_ADMIN_TOKEN'
+  - it: preserves an explicit admin-tokens provider
+    set:
+      secrets.create: false
+      config.identity-providers.admin-tokens:
+        module: admin-tokens
+        token: {env: CUSTOM_TOKEN}
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'env: CUSTOM_TOKEN'
+  - it: ignores an unused governance store default when config supplies the store
+    set:
+      governance.store.module: sqlite
+      config.store.module: memory
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'store:\s+module: memory'
+  - it: rejects duplicate chart-managed TLS config
+    set:
+      dataTLS.enabled: true
+      dataTLS.existingSecret: data-cert
+      config.tls.cert: {env: CERT}
+    asserts:
+      - failedTemplate:
+          errorPattern: chart-managed
+  - it: locks chart-managed config by default even with a writable overlay path
+    set:
+      config.config.overlay.file: /tmp/custom-overlay.json
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'locked: true'
+  - it: preserves an explicit false locked setting
+    set:
+      config.config.locked: false
+      config.config.overlay.file: /tmp/custom-overlay.json
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'locked: false'

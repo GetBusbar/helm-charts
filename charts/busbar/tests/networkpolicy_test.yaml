@@ -1,0 +1,29 @@
+suite: admin namespace isolation
+templates:
+  - networkpolicy.yaml
+values:
+  - ../ci/default-values.yaml
+set:
+  networkPolicy.enabled: true
+tests:
+  - it: denies admin ingress when no namespace is allowed
+    asserts:
+      - equal:
+          path: spec.ingress
+          value:
+            - ports:
+                - protocol: TCP
+                  port: 8080
+  - it: allows admin only from explicitly selected namespaces
+    set:
+      networkPolicy.admin.allowedNamespaces: [platform-ops]
+    asserts:
+      - equal:
+          path: spec.ingress[0].from
+          value:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: platform-ops
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 8081
