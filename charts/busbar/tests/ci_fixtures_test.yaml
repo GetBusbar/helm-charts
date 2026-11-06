@@ -1,0 +1,32 @@
+suite: ct install fixtures render
+templates: [deployment.yaml, configmap.yaml, secret.yaml, certificate.yaml, networkpolicy.yaml]
+capabilities:
+  apiVersions:
+    - cert-manager.io/v1
+tests:
+  - it: admin-mtls fixture exposes the admin plane with cert-manager mTLS
+    values: [../ci/admin-mtls-values.yaml]
+    template: configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'admin_listen: "0\.0\.0\.0:8081"'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'client_ca:\s+file: /etc/busbar/tls/admin/ca\.crt'
+  - it: admin-mtls fixture issues the admin certificate
+    values: [../ci/admin-mtls-values.yaml]
+    template: certificate.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+  - it: overlay fixture unlocks config with a writable overlay
+    values: [../ci/overlay-values.yaml]
+    template: configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'locked: false'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'file: /tmp/'

@@ -110,6 +110,17 @@ tests:
             name: admin-ca
             mountPath: /etc/busbar/tls/admin-ca
             readOnly: true
+  - it: existing-Secret path points client_ca at the mounted client CA
+    template: configmap.yaml
+    set:
+      service.admin.enabled: true
+      adminTLS.enabled: true
+      adminTLS.existingSecret: my-admin-cert
+      adminTLS.clientCASecret: my-admin-ca
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'client_ca:\s+file: /etc/busbar/tls/admin-ca/ca\.crt'
   - it: refuses adminTLS without a cert source (no empty secretName)
     template: deployment.yaml
     set:

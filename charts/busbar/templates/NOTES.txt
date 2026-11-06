@@ -4,14 +4,28 @@ WORKLOAD
 --------
 {{- if .Values.governance.enabled }}
   Governance is ENABLED -> a StatefulSet with a PVC and replicas=1.
-  store.module = {{ .Values.governance.store.module }}
-  {{- if eq .Values.governance.store.module "memory" }}
+  {{- $userCfg := .Values.config | default dict }}
+  {{- $storeModule := .Values.governance.store.module | default "memory" }}
+  {{- if .Values.existingConfigMap }}
+  store: configured in ConfigMap {{ .Values.existingConfigMap }}.
+  {{- else if hasKey $userCfg "store" }}
+  {{- $userStore := $userCfg.store }}
+  {{- $userModule := "" }}
+  {{- if kindIs "map" $userStore }}{{- $userModule = get $userStore "module" | default "" }}{{- end }}
+  store: set in config.store{{ with $userModule }} (module = {{ . }}){{ end }}.
+  {{- if or (not $userModule) (eq (toString $userModule) "memory") }}
+  WARNING: the store is IN-MEMORY. Keys, group usage and ledgers reset on every restart.
+  {{- end }}
+  {{- else }}
+  store.module = {{ $storeModule }}
+  {{- if eq $storeModule "memory" }}
   WARNING: the store is IN-MEMORY. Keys, group usage and ledgers reset on every
   restart. Durable stores in busbar 1.5.x are signed store plugins and the image
   ships none, so mount one, set config.plugins.enabled=true + config.plugins.dir,
   then set governance.store.module to it.
   {{- else }}
   Durable store DB at {{ .Values.governance.dbPath }}.
+  {{- end }}
   {{- end }}
   Horizontal scale of a shared single-writer store is NOT supported.
 {{- else }}
@@ -24,9 +38,9 @@ DATA PLANE (public LLM proxy, port 8080)
 
   Reach it from inside the cluster:
     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "busbar.serviceName" (dict "root" . "suffix" "-data") }} {{ .Values.service.data.port }}:{{ .Values.service.data.port }}
-    curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/healthz    # unauthenticated health
-    curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/metrics     # only if config.export configures a Prometheus exporter
-    curl http{{ if .Values.dataTLS.enabled }}s{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/stats       # runtime stats
+    curl {{ if .Values.dataTLS.enabled }}-k https{{ else }}http{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/healthz    # unauthenticated health
+    curl {{ if .Values.dataTLS.enabled }}-k https{{ else }}http{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/metrics     # only if config.export configures a Prometheus exporter
+    curl {{ if .Values.dataTLS.enabled }}-k https{{ else }}http{{ end }}://127.0.0.1:{{ .Values.service.data.port }}/stats       # runtime stats
 
 {{- if .Values.ingress.enabled }}
 
@@ -58,7 +72,7 @@ ADMIN PLANE (port 8081)
   the pod.
 
   Forward the pod's admin port to your workstation (the image has no curl):
-    kubectl -n {{ .Release.Namespace }} port-forward {{ if .Values.governance.enabled }}statefulset{{ else }}deployment{{ end }}/{{ include "busbar.fullname" . }} 8081:8081
+    kubectl -n {{ .Release.Namespace }} port-forward {{ if .Values.governance.enabled }}statefulset/{{ include "busbar.statefulSetName" . }}{{ else }}deployment/{{ include "busbar.fullname" . }}{{ end }} 8081:8081
 {{- if .Values.adminTLS.enabled }}
   Use HTTPS with the server CA and any required client certificate and key.
 {{- else }}
@@ -73,17 +87,42 @@ ADMIN PLANE (port 8081)
 
 CONFIG MUTABILITY
 -----------------
-  configMutability.mode = {{ .Values.configMutability.mode }}
-{{- if eq .Values.configMutability.mode "locked" }}
+{{- $userCfgSection := (get (.Values.config | default dict) "config") | default dict }}
+{{- if not (kindIs "map" $userCfgSection) }}{{- $userCfgSection = dict }}{{- end }}
+{{- /* Same defaults configmap.yaml applies. */}}
+{{- $mut := .Values.configMutability | default dict }}
+{{- $mode := $mut.mode | default "locked" }}
+{{- if .Values.existingConfigMap }}
+  existingConfigMap is set, so the chart renders no config and configMutability
+  is not applied: config.locked / config.overlay come from ConfigMap
+  {{ .Values.existingConfigMap }}.
+{{- else if hasKey $userCfgSection "locked" }}
+  config.locked: {{ $userCfgSection.locked | toJson }} (set in .Values.config.config, which overrides
+  configMutability.mode = {{ $mode }}).
+{{- else }}
+  configMutability.mode = {{ $mode }}
+{{- if eq $mode "locked" }}
   config.locked: true -> the admin API REFUSES config mutations. Change config by
   editing values and running `helm upgrade` (reloadOnConfigChange rolls the pods).
-{{- else if eq .Values.configMutability.mode "overlay" }}
-  config.locked: false, overlay at {{ .Values.configMutability.overlayFile }}.
-  Admin-API config mutations persist to that file. If it is on the chart's /tmp
+{{- else if eq $mode "overlay" }}
+  {{- $overlayFile := $mut.overlayFile | default "/tmp/busbar-overlay.json" }}
+  {{- if hasKey $userCfgSection "overlay" }}
+  {{- /* The chart adds no overlay when the user set one, so report only the user's file. */}}
+  {{- $overlay := get $userCfgSection "overlay" }}
+  {{- $overlayFile = "" }}
+  {{- if and (kindIs "map" $overlay) (get $overlay "file") }}{{- $overlayFile = get $overlay "file" }}{{- end }}
+  {{- end }}
+  {{- if $overlayFile }}
+  config.locked: false, overlay at {{ $overlayFile }}.
+  {{- else }}
+  config.locked: false, and .Values.config.config.overlay sets no overlay file.
+  {{- end }}
+  Admin-API config mutations persist to the overlay file. If it is on the chart's /tmp
   emptyDir it is POD-LOCAL and EPHEMERAL: mutations are lost on restart and on
   helm upgrade, and multiple replicas will DIVERGE.
 {{- else }}
   The chart writes no config.locked/config.overlay: you own them in .Values.config.
+{{- end }}
 {{- end }}
 
 Run the bundled health test any time:

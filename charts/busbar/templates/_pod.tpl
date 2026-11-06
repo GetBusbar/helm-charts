@@ -13,10 +13,11 @@ metadata:
   annotations:
     {{- if .Values.reloadOnConfigChange }}
     {{- if not .Values.existingConfigMap }}
-    checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    {{- /* Hash the data only, not the metadata labels that carry the chart version. */}}
+    checksum/config: {{ (include (print $.Template.BasePath "/configmap.yaml") . | fromYaml).data | toYaml | sha256sum }}
     {{- end }}
     {{- if and .Values.secrets.create (not .Values.secrets.existingSecret) }}
-    checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    checksum/secret: {{ (include (print $.Template.BasePath "/secret.yaml") . | fromYaml).stringData | toYaml | sha256sum }}
     {{- end }}
     {{- end }}
     {{- with .Values.podAnnotations }}

@@ -1,0 +1,53 @@
+suite: data-plane TLS wiring
+templates: [deployment.yaml, configmap.yaml, secret.yaml, tests/test-connection.yaml]
+values: [../ci/default-values.yaml]
+set:
+  dataTLS.enabled: true
+  dataTLS.existingSecret: data-cert
+tests:
+  - it: probes the data listener over HTTPS
+    template: deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTPS
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTPS
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: data-tls
+            secret:
+              secretName: data-cert
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: data-tls
+            mountPath: /etc/busbar/tls/data
+            readOnly: true
+  - it: points config tls at the mounted Secret files
+    template: configmap.yaml
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'tls:\s+cert:\s+file: /etc/busbar/tls/data/tls\.crt\s+key:\s+file: /etc/busbar/tls/data/tls\.key'
+  - it: health test uses https and tolerates the private cert
+    template: tests/test-connection.yaml
+    asserts:
+      - contains:
+          path: spec.containers[0].args
+          content: https://RELEASE-NAME-busbar-data:8080/healthz
+      - contains:
+          path: spec.containers[0].args
+          content: --insecure
+  - it: falls back to the chart appVersion when image.tag is empty
+    template: deployment.yaml
+    set:
+      image.tag: ""
+    chart:
+      appVersion: 7.8.9
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: getbusbar/busbar:7.8.9

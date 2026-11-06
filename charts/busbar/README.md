@@ -249,7 +249,7 @@ networkPolicy:
 | `nodeSelector` | Node selector | `{}` |
 | `tolerations` | Tolerations | `[]` |
 | `affinity` | Affinity | `{}` |
-| `config` | **Required.** Structured map rendered to `config.yaml` (chart injects `listen`/`admin_listen`) | `{}` (fails the render) |
+| `config` | **Required.** Structured map rendered to `config.yaml` (chart manages `listen`, `admin_listen`, `tls` and `admin_tls`; setting them here fails the render) | `{}` (fails the render) |
 | `configMutability.mode` | `locked` / `overlay` / `none` (see [Config mutability](#config-mutability)) | `locked` |
 | `configMutability.overlayFile` | Overlay backend path, `overlay` mode only. Pod-local and ephemeral by default | `/tmp/busbar-overlay.json` |
 | `providersCatalog` | Optional map rendered to `providers.yaml` (else the image's catalog is used) | `{}` |

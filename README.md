@@ -58,10 +58,11 @@ busbar 1.5.x moved every durable store behind a signed **store** plugin, and the
 
 ## Contributing
 
-Charts live under `charts/`. Pull requests are linted and smoke-tested with
-[chart-testing](https://github.com/helm/chart-testing) against a [kind](https://kind.sigs.k8s.io)
-cluster. On merge to `main`, [chart-releaser](https://github.com/helm/chart-releaser) packages the
-chart and publishes it to the `gh-pages` branch / GitHub Pages.
+Charts live under `charts/`. Test a change with `helm unittest charts/busbar` (the
+[helm-unittest](https://github.com/helm-unittest/helm-unittest) suites in `charts/busbar/tests`)
+and `python3 -m unittest discover -s tests` (the release scripts in `scripts/ci`). `ct.yaml`
+configures [chart-testing](https://github.com/helm/chart-testing) lint and install runs against the
+`charts/busbar/ci/*-values.yaml` fixtures. Released charts are served from the `gh-pages` branch.
 
 ## License
 

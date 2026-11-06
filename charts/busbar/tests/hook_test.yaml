@@ -7,3 +7,13 @@ tests:
       - equal:
           path: spec.automountServiceAccountToken
           value: false
+  - it: is not selected by the workload, Service, HPA or PDB selectors
+    asserts:
+      - notExists:
+          path: metadata.labels["app.kubernetes.io/name"]
+      - equal:
+          path: metadata.labels["app.kubernetes.io/instance"]
+          value: RELEASE-NAME
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: test

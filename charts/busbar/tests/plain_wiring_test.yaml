@@ -1,0 +1,79 @@
+suite: plain-HTTP and Service wiring
+templates: [deployment.yaml, configmap.yaml, secret.yaml, tests/test-connection.yaml, service-admin.yaml, service-headless.yaml, statefulset.yaml, networkpolicy.yaml]
+values: [../ci/default-values.yaml]
+tests:
+  - it: probes the plain data listener over HTTP on /healthz
+    template: deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+          value: {path: /healthz, port: data}
+  - it: health test uses plain http without --insecure
+    template: tests/test-connection.yaml
+    asserts:
+      - contains:
+          path: spec.containers[0].args
+          content: http://RELEASE-NAME-busbar-data:8080/healthz
+      - notContains:
+          path: spec.containers[0].args
+          content: --insecure
+  - it: admin Service targets the named admin container port
+    template: service-admin.yaml
+    set:
+      service.admin.enabled: true
+      service.admin.port: 9443
+      adminTLS.enabled: true
+      adminTLS.existingSecret: admin-cert
+      adminTLS.clientCASecret: admin-ca
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-busbar-admin
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0]
+          value: {name: admin, port: 9443, targetPort: admin, protocol: TCP}
+      - equal:
+          path: spec.selector
+          value:
+            app.kubernetes.io/name: busbar
+            app.kubernetes.io/instance: RELEASE-NAME
+  - it: StatefulSet serviceName is the headless Service it renders
+    template: service-headless.yaml
+    set:
+      governance.enabled: true
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-busbar-headless
+      - equal:
+          path: spec.clusterIP
+          value: None
+  - it: the governance StatefulSet names that headless Service
+    template: statefulset.yaml
+    set:
+      governance.enabled: true
+    asserts:
+      - equal:
+          path: spec.serviceName
+          value: RELEASE-NAME-busbar-headless
+  - it: NetworkPolicy selects only this release's busbar pods
+    template: networkpolicy.yaml
+    set:
+      networkPolicy.enabled: true
+      networkPolicy.admin.allowedNamespaces: [platform-ops]
+    asserts:
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: busbar
+            app.kubernetes.io/instance: RELEASE-NAME
+      - equal:
+          path: spec.ingress[1]
+          value: {ports: [{protocol: TCP, port: 8080}]}

@@ -2,25 +2,17 @@
 # Verify that a container image tag is actually PULLABLE before this repo publishes a chart that
 # points at it.
 #
-# WHY THIS EXISTS. release-on-upstream.yml self-heals off GetBusbar/busbar's `releases/latest` on a
-# daily cron. It used to bump `charts/busbar/Chart.yaml`'s appVersion the moment a newer release
-# object appeared, and never checked that the matching container image had been pushed. Those are
-# published by two DIFFERENT workflows (release.yml and docker.yml) that run in PARALLEL off the same
-# tag push, so there is a real window in which the release object exists and the image does not. If
-# the cron fires inside that window the chart publishes with `tag: ""` in values.yaml, which falls
-# back to appVersion, and every user who installs it gets ImagePullBackOff. During the 1.5.3 release
-# that window was open and the only reason it did not detonate was timing.
-#
-# The pattern being copied here is GetBusbar/homebrew-busbar's, which is safe BY CONSTRUCTION rather
-# than by check: it downloads every tarball under `set -euo pipefail`, so it dies before re-pinning
-# and stays fail-closed at the previous version. This script makes the chart fail-closed the same
-# way: no image, no bump, chart stays where it was, and the next cron retries.
+# WHY THIS EXISTS. A busbar release object and its container image are published separately, so
+# there is a window in which the release exists and the image does not. A chart bumped to that
+# appVersion inside the window falls back (`tag: ""`) to an image that is not there, and every user
+# who installs it gets ImagePullBackOff. Run this before bump_chart.py: no image, no bump, the chart
+# stays where it was, and the next release run retries.
 #
 # Reads the OCI Distribution API directly (the same bytes `docker pull` reads), never Docker Hub's
 # tags/search index, which can lag hours behind a real push.
 #
 # Usage:   verify-image.sh <repository> <tag> [attempts] [sleep-seconds]
-# Example: verify-image.sh getbusbar/busbar 1.5.3
+# Example: verify-image.sh getbusbar/busbar 1.6.0
 #
 # Self-test (proves this script goes RED as well as GREEN, before its verdict is trusted anywhere):
 #          verify-image.sh --selftest
@@ -41,9 +33,10 @@ manifest_status() {
 }
 
 verify() {
-  local repo="$1" tag="$2" attempts="${3:-10}" nap="${4:-30}" i status
+  local repo="$1" tag="$2" attempts="${3:-10}" nap="${4:-30}" i status=000
   for (( i = 1; i <= attempts; i++ )); do
-    status="$(manifest_status "$repo" "$tag" || echo 000)"
+    # curl -w already prints 000 on a transport failure; only default when nothing was printed.
+    status="$(manifest_status "$repo" "$tag")" || status="${status:-000}"
     if [ "$status" = "200" ]; then
       echo "OK: ${repo}:${tag} is pullable from registry-1.docker.io (HTTP 200, attempt ${i}/${attempts})"
       return 0
@@ -54,7 +47,7 @@ verify() {
   echo "FAIL: ${repo}:${tag} is NOT pullable after ${attempts} attempt(s); last status HTTP ${status}." >&2
   echo "Refusing to publish a chart whose appVersion points at an image that does not exist:" >&2
   echo "every user who installed it would get ImagePullBackOff. The chart stays at its current" >&2
-  echo "version and the next scheduled run will retry, so this heals itself once the image lands." >&2
+  echo "version and the next release run will retry, so this heals itself once the image lands." >&2
   return 1
 }
 

@@ -32,8 +32,8 @@ tests:
     asserts:
       - matchRegex:
           path: metadata.name
-          pattern: '^.{1,63}$'
-  - it: keeps the workload name while using the shortened headless Service name
+          pattern: '^a{58}-data$'
+  - it: caps the StatefulSet name at 52 and keeps the shortened headless Service name
     template: statefulset.yaml
     set:
       fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -41,7 +41,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       - equal:
           path: spec.serviceName
           value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-headless

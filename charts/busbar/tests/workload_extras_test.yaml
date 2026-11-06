@@ -1,0 +1,57 @@
+suite: data-plane workload extras
+templates:
+  - hpa.yaml
+  - ingress.yaml
+  - serviceaccount.yaml
+  - service-admin.yaml
+  - deployment.yaml
+  - configmap.yaml
+  - secret.yaml
+values:
+  - ../ci/default-values.yaml
+tests:
+  - it: accepts a CPU target above the request (HPA utilization may exceed 100)
+    template: hpa.yaml
+    set:
+      autoscaling.enabled: true
+      autoscaling.targetCPUUtilizationPercentage: 150
+    asserts:
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 150
+      - equal:
+          path: spec.scaleTargetRef.kind
+          value: Deployment
+  - it: routes the Ingress only to the data Service
+    template: ingress.yaml
+    set:
+      ingress.enabled: true
+      ingress.hosts:
+        - host: gw.example.com
+          paths:
+            - path: /
+    asserts:
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: RELEASE-NAME-busbar-data
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.port.number
+          value: 8080
+  - it: does not automount an API token on the ServiceAccount
+    template: serviceaccount.yaml
+    asserts:
+      - equal:
+          path: automountServiceAccountToken
+          value: false
+  - it: keeps the admin Service cluster-internal
+    template: service-admin.yaml
+    set:
+      service.admin.enabled: true
+      service.admin.type: LoadBalancer
+      adminTLS.enabled: true
+      adminTLS.existingSecret: admin-cert
+      adminTLS.clientCASecret: admin-ca
+    asserts:
+      - failedTemplate:
+          errorPattern: "/service/admin/type': value must be 'ClusterIP'"
+

@@ -2,12 +2,12 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "busbar.fullname" . }}
+  name: {{ include "busbar.statefulSetName" . }}
   labels:
     {{- include "busbar.labels" . | nindent 4 }}
 spec:
-  # Governance owns a single-writer SQLite DB per replica; horizontal scale of a
-  # shared store is unsupported. replicas is pinned to 1.
+  # Governance owns single-writer store state; horizontal scale of a shared
+  # store is unsupported. replicas is pinned to 1.
   replicas: 1
   serviceName: {{ include "busbar.serviceName" (dict "root" . "suffix" "-headless") }}
   selector:
@@ -19,7 +19,8 @@ spec:
     - metadata:
         name: governance-data
         labels:
-          {{- include "busbar.labels" . | nindent 10 }}
+          {{- /* volumeClaimTemplates are immutable: only labels that never change for a release. */}}
+          {{- include "busbar.selectorLabels" . | nindent 10 }}
       spec:
         accessModes:
           - {{ .Values.governance.persistence.accessMode }}

@@ -124,11 +124,11 @@ wiring plugins yourself is an exit-1 config.
 {{- if not .Values.secrets.create -}}
 {{- fail "governance admin token requires secrets.create=true or secrets.existingSecret" -}}
 {{- end -}}
-{{- if not (index (default dict .Values.secrets.data) .Values.governance.adminTokenEnv) -}}
-{{- fail "governance admin token must be non-empty in secrets.data (or use secrets.existingSecret)" -}}
-{{- end -}}
 {{- if not (hasKey (default dict .Values.secrets.data) .Values.governance.adminTokenEnv) -}}
 {{ fail (printf "\n\ngovernance.enabled=true requires an admin token, but secrets.data has no %q key. busbar refuses to gate its admin plane without one.\n\nFix: add the token to the Secret, e.g.\n  --set secrets.data.%s=<a-long-random-token>\nor set governance.adminTokenEnv to a key you already provide (or use an existingSecret that contains it).\n" .Values.governance.adminTokenEnv .Values.governance.adminTokenEnv) }}
+{{- end -}}
+{{- if not (index (default dict .Values.secrets.data) .Values.governance.adminTokenEnv) -}}
+{{- fail "governance admin token must be non-empty in secrets.data (or use secrets.existingSecret)" -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -143,7 +143,10 @@ wiring plugins yourself is an exit-1 config.
 {{- end }}
 
 {{/*
-Config boot-guard: busbar is a proxy in front of upstream LLM providers and
+Config boot-guard. Also rejects dataTLS without its Secret and chart-managed keys
+(listen/admin_listen/tls, admin_tls with adminTLS) set inside .Values.config.
+
+busbar is a proxy in front of upstream LLM providers and
 refuses to boot without a `providers` map, so an empty .Values.config renders a
 two-line listener stub that exits 1 with
   [error] config.yaml: invalid YAML: missing field `providers`
@@ -156,11 +159,14 @@ config the user actually needs instead of shipping a CrashLoopBackOff.
 {{- fail "dataTLS.enabled=true requires dataTLS.existingSecret" -}}
 {{- end -}}
 {{- if not .Values.existingConfigMap -}}
-{{- $managed := list "listen" "admin_listen" -}}
+{{- $userCfg := .Values.config | default dict -}}
+{{- /* `tls` is always chart-managed: the probes and the helm test pick HTTP or HTTPS
+       from dataTLS.enabled, so a data-listener TLS block set only in config would
+       leave them speaking HTTP to an HTTPS listener and crash-loop the pod. */ -}}
+{{- $managed := list "listen" "admin_listen" "tls" -}}
 {{- if .Values.adminTLS.enabled -}}{{- $managed = append $managed "admin_tls" -}}{{- end -}}
-{{- if .Values.dataTLS.enabled -}}{{- $managed = append $managed "tls" -}}{{- end -}}
 {{- range $key := $managed -}}
-{{- if hasKey $.Values.config $key -}}
+{{- if hasKey $userCfg $key -}}
 {{- fail (printf "config.%s is chart-managed; configure service/adminTLS/dataTLS values instead" $key) -}}
 {{- end -}}
 {{- end -}}
@@ -171,6 +177,15 @@ config the user actually needs instead of shipping a CrashLoopBackOff.
 {{- end -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+StatefulSet name. The controller labels each pod with
+controller-revision-hash=<name>-<hash up to 10 chars>, a label value capped at 63,
+so a longer name renders but never creates a pod.
+*/}}
+{{- define "busbar.statefulSetName" -}}
+{{- include "busbar.fullname" . | trunc 52 | trimSuffix "-" -}}
+{{- end -}}
 
 {{/* Reserve suffix space without changing existing workload names. */}}
 {{- define "busbar.serviceName" -}}

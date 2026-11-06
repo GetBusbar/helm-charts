@@ -1,0 +1,60 @@
+suite: governance workload
+templates:
+  - statefulset.yaml
+  - deployment.yaml
+  - hpa.yaml
+  - configmap.yaml
+  - secret.yaml
+values:
+  - ../ci/governance-values.yaml
+tests:
+  - it: keeps chart and app versions out of the immutable volumeClaimTemplates
+    template: statefulset.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - notExists:
+          path: spec.volumeClaimTemplates[0].metadata.labels["helm.sh/chart"]
+      - notExists:
+          path: spec.volumeClaimTemplates[0].metadata.labels["app.kubernetes.io/version"]
+      - equal:
+          path: spec.volumeClaimTemplates[0].metadata.labels["app.kubernetes.io/instance"]
+          value: RELEASE-NAME
+  - it: pins the single-writer StatefulSet to one replica
+    template: statefulset.yaml
+    set:
+      replicaCount: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+  - it: mounts the governance volume at the database directory
+    template: statefulset.yaml
+    set:
+      governance.dbPath: /var/lib/busbar/state/gov.db
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: governance-data
+            mountPath: /var/lib/busbar/state
+  - it: leaves room for the controller-revision-hash label in the StatefulSet name
+    template: statefulset.yaml
+    set:
+      fullnameOverride: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    asserts:
+      - matchRegex:
+          path: metadata.name
+          pattern: '^a{52}$'
+  - it: renders no Deployment for governance
+    template: deployment.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders no HPA for the single-writer StatefulSet
+    template: hpa.yaml
+    set:
+      autoscaling.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0

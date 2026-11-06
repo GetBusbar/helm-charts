@@ -31,7 +31,7 @@ fullnameOverride: ""
 
 # -- Number of replicas (stateless / no-governance mode only).
 # Ignored when governance.enabled=true (governance forces a StatefulSet with
-# replicas=1 because busbar owns a single-writer SQLite DB per replica).
+# replicas=1 because busbar owns single-writer store state).
 replicaCount: 1
 
 serviceAccount:
@@ -85,7 +85,8 @@ affinity: {}
 # -- The busbar deploy config (config.yaml). Rendered into a ConfigMap and
 # mounted at /etc/busbar/config.yaml (env BUSBAR_CONFIG). The chart ALWAYS
 # injects `listen` (data plane) and `admin_listen` (admin plane) into this
-# map, so do not set them here: they are managed by the chart from the
+# map, plus `tls` (dataTLS) and `admin_tls` (adminTLS), so do not set them
+# here: the render fails if you do. They are managed by the chart from the
 # listener wiring below.
 #
 # REQUIRED. There is no meaningful zero-config busbar: the gateway is a proxy

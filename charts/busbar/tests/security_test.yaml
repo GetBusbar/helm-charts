@@ -53,4 +53,5 @@ tests:
       service.admin.enabled: true
       adminInsecure: true
     asserts:
-      - failedTemplate: {}
+      - failedTemplate:
+          errorPattern: busbar 1.6.0 has no insecure waiver

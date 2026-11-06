@@ -1,0 +1,74 @@
+suite: config rollout checksum
+# reloadOnConfigChange rolls pods when config or secret DATA changes. A chart or
+# app version bump with identical data must not roll them (it would reset an
+# in-memory governance store for nothing).
+templates: [deployment.yaml, configmap.yaml, secret.yaml]
+values: [../ci/default-values.yaml]
+tests:
+  # The literal below is the checksum of ci/default-values.yaml's config data;
+  # update it in all three tests if that fixture's config changes.
+  - it: checksum at one chart version
+    template: deployment.yaml
+    chart:
+      version: 0.3.1
+      appVersion: 1.6.0
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: fa09dffc96f99bb1f9329391c6956297920c419af849f2f8d153cc59c6e415f2
+  - it: checksums are identical across chart and app versions
+    template: deployment.yaml
+    chart:
+      version: 9.9.9
+      appVersion: 9.9.9
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: fa09dffc96f99bb1f9329391c6956297920c419af849f2f8d153cc59c6e415f2
+  - it: checksum changes when the config data changes
+    template: deployment.yaml
+    set:
+      config.models.claude-sonnet.max_concurrent: 21
+    asserts:
+      - exists:
+          path: spec.template.metadata.annotations["checksum/config"]
+      - notEqual:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: fa09dffc96f99bb1f9329391c6956297920c419af849f2f8d153cc59c6e415f2
+  - it: rolls pods when secret data changes
+    template: deployment.yaml
+    set:
+      secrets.data.ANTHROPIC_KEY: rotated-key
+    asserts:
+      - exists:
+          path: spec.template.metadata.annotations["checksum/secret"]
+      - notEqual:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: 5df28266b7141309f142e0a47fc46568e01ca9ce793fbb543719da63ba91fba6
+  - it: secret checksum ignores the chart version labels
+    template: deployment.yaml
+    chart:
+      version: 9.9.9
+      appVersion: 9.9.9
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: 5df28266b7141309f142e0a47fc46568e01ca9ce793fbb543719da63ba91fba6
+  - it: no secret checksum for an external Secret
+    template: deployment.yaml
+    set:
+      secrets.existingSecret: external
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/secret"]
+      - exists:
+          path: spec.template.metadata.annotations["checksum/config"]
+  - it: reloadOnConfigChange=false drops both checksums
+    template: deployment.yaml
+    set:
+      reloadOnConfigChange: false
+    asserts:
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/config"]
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/secret"]

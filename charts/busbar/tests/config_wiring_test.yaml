@@ -93,3 +93,49 @@ tests:
       - matchRegex:
           path: data["config.yaml"]
           pattern: 'locked: false'
+  - it: names the missing governance token key
+    set:
+      governance.adminTokenEnv: OTHER_ADMIN_TOKEN
+    asserts:
+      - failedTemplate:
+          errorPattern: 'secrets.data has no "OTHER_ADMIN_TOKEN" key'
+  - it: explains a null config instead of a type error
+    set:
+      config: null
+    asserts:
+      - failedTemplate:
+          errorPattern: '`config` is REQUIRED'
+  - it: rejects data-listener TLS in config when dataTLS is off (probes would use HTTP)
+    set:
+      config.tls.cert: {env: CERT}
+    asserts:
+      - failedTemplate:
+          errorPattern: config.tls is chart-managed
+  - it: wires the admin-tokens provider into auth.admin_auth for governance
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'admin_auth:\s+- admin-tokens'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'token:\s+env: BUSBAR_ADMIN_TOKEN'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'store:\s+module: memory'
+  - it: overlay mode unlocks config and points the overlay at the default file
+    set:
+      configMutability.mode: overlay
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'locked: false'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'file: /tmp/busbar-overlay.json'
+  - it: none mode writes no config.locked
+    set:
+      configMutability.mode: none
+    asserts:
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: 'locked:'

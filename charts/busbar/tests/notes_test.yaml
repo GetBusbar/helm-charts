@@ -1,0 +1,82 @@
+suite: install notes
+templates:
+  - NOTES.txt
+values:
+  - ../ci/governance-values.yaml
+tests:
+  - it: reports the store module from config.store when the user supplies it
+    set:
+      config.store.module: sqlite
+      config.plugins.enabled: true
+    asserts:
+      - notMatchRegexRaw:
+          pattern: IN-MEMORY
+      - matchRegexRaw:
+          pattern: 'store: set in config.store \(module = sqlite\)'
+  - it: does not claim the chart locked an existing ConfigMap
+    set:
+      existingConfigMap: my-config
+    asserts:
+      - notMatchRegexRaw:
+          pattern: 'config.locked: true'
+  - it: reports a user-set unlocked config instead of the mode default
+    set:
+      config.config.locked: false
+    asserts:
+      - notMatchRegexRaw:
+          pattern: 'config.locked: true'
+  - it: renders when config.store is not a map
+    set:
+      config.store: foo
+    asserts:
+      - matchRegexRaw:
+          pattern: 'store: set in config.store\.'
+  - it: names the user's overlay file when config.config.overlay overrides it
+    set:
+      configMutability.mode: overlay
+      config.config.overlay.file: /var/lib/busbar/overlay.json
+    asserts:
+      - matchRegexRaw:
+          pattern: 'overlay at /var/lib/busbar/overlay\.json'
+  - it: does not tell a config.store user to set governance.store.module
+    set:
+      config.store.module: memory
+    asserts:
+      - matchRegexRaw:
+          pattern: IN-MEMORY
+      - notMatchRegexRaw:
+          pattern: 'set governance\.store\.module'
+  - it: does not call a non-map config.store durable
+    set:
+      config.store: foo
+      governance.store.module: sqlite
+      config.plugins.enabled: true
+    asserts:
+      - notMatchRegexRaw:
+          pattern: 'store.module = sqlite'
+  - it: warns that an empty config.store is in-memory
+    set:
+      config.store: {}
+    asserts:
+      - matchRegexRaw:
+          pattern: IN-MEMORY
+  - it: renders when configMutability is null and reports the locked default
+    set:
+      configMutability: null
+    asserts:
+      - matchRegexRaw:
+          pattern: 'configMutability.mode = locked'
+  - it: does not name the default overlay file when the user's overlay has none
+    set:
+      configMutability.mode: overlay
+      config.config.overlay.backend: file
+    asserts:
+      - notMatchRegexRaw:
+          pattern: 'overlay at /tmp/busbar-overlay\.json'
+  - it: health hints tolerate the private data-listener certificate
+    set:
+      dataTLS.enabled: true
+      dataTLS.existingSecret: data-cert
+    asserts:
+      - matchRegexRaw:
+          pattern: 'curl -k https://127\.0\.0\.1:8080/healthz'

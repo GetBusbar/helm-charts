@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+- **Governance StatefulSet upgrades no longer fail on every chart release.** The
+  `volumeClaimTemplates` carried the chart-version and appVersion labels, and that field is
+  immutable, so `helm upgrade` to any newer chart was rejected. They now carry only the stable
+  selector labels. One-time step for existing governance installs (the PVC and its data are
+  kept, and the new StatefulSet re-adopts them and rolls the pod):
+  `kubectl -n <namespace> delete statefulset <release-fullname> --cascade=orphan`, then `helm upgrade`.
+- The governance StatefulSet name is capped at 52 characters, so the controller's
+  `controller-revision-hash` pod label fits in 63. Longer names previously rendered but never
+  created a pod.
+- `config.tls` is always chart-managed (use `dataTLS`); set alone it left the probes and the
+  helm test speaking HTTP to an HTTPS listener.
+- A missing governance admin token key now gets the detailed error naming the key, and
+  `config: null` gets the "config is REQUIRED" message instead of a template type error.
+- `autoscaling.targetCPUUtilizationPercentage` accepts values above 100 (it is a percentage of
+  the CPU request).
+- The helm test pod no longer carries the workload selector labels, so the HPA (which selects
+  pods through the Deployment selector) no longer counts the request-less curl pod and stalls
+  CPU autoscaling while a test pod exists. It is labelled `app.kubernetes.io/component: test`.
+- `checksum/config` and `checksum/secret` hash only the rendered data, so a chart or appVersion
+  bump with unchanged config no longer rolls the pods. The checksum format changes once, so the
+  upgrade to this chart rolls them one last time.
+- NOTES report the user's `config.config.overlay.file` in overlay mode, and no longer tell a
+  `config.store` user to set `governance.store.module`.
+- NOTES no longer fail when `configMutability` is null (they apply the same `locked` default as
+  the ConfigMap), report no file when `config.config.overlay` sets none, and use `curl -k` for
+  the health hints when the data listener terminates TLS.
+- NOTES report the effective store module and config lock when they come from `config` or an
+  `existingConfigMap`.
+- `bump_chart.py` exits 2 (not 1, "not newer") for malformed versions and warns when it cannot
+  rewrite the Artifact Hub image annotation.
+  A mode flag with the wrong argument count prints usage (exit 2) instead of a traceback, and a
+  version argument whose numeric part is too long for Python's int is reported as malformed (exit 2) instead of crashing.
+
 ## 0.3.1
 
 - Empty admin namespace allowlists now deny admin ingress instead of allowing every source.
