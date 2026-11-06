@@ -4,7 +4,7 @@ import sys
 import tempfile
 import unittest
 
-SCRIPT = pathlib.Path(__file__).resolve().parents[1] / '.github/scripts/bump_chart.py'
+SCRIPT = pathlib.Path(__file__).resolve().parents[1] / 'scripts/ci/bump_chart.py'
 
 
 class BumpChartTest(unittest.TestCase):
