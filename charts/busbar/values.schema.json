@@ -167,7 +167,16 @@
             "required": ["host", "paths"]
           }
         },
-        "tls": { "type": "array" }
+        "tls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "secretName": { "type": "string" },
+              "hosts": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
       }
     },
     "networkPolicy": {

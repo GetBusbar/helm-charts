@@ -68,7 +68,7 @@ if len(sys.argv) != 3 or sys.argv[1].startswith("--"):
     die("usage: bump_chart.py <Chart.yaml> <version> | --validate <version> | --is-newer <current> <candidate>")
 
 path, candidate_app_version = sys.argv[1], sys.argv[2]
-with open(path) as f:
+with open(path, encoding="utf-8") as f:
     text = f.read()
 
 m = re.search(r'^version:\s*"?([0-9]+)\.([0-9]+)\.([0-9]+)"?\s*$', text, re.MULTILINE)
@@ -110,7 +110,7 @@ if image_rewrites != 1:
         file=sys.stderr,
     )
 
-with open(path, "w") as f:
+with open(path, "w", encoding="utf-8") as f:
     f.write(text)
 print(
     f"chart version {major}.{minor}.{patch} -> {new_version}, "
